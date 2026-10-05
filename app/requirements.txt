@@ -1,0 +1,22 @@
+# Web & App
+streamlit==1.15.0
+altair==4.0
+flask
+requests==2.24.0
+
+# Spark/Delta
+pyspark==3.3.2
+delta-spark==2.2.0
+findspark
+
+# Data/ML
+pandas==1.4.0
+scikit-learn==1.0
+numpy
+scipy
+
+# AWS & MLflow
+mlflow==2.3.2
+boto3==1.16.46
+awscli
+pyOpenSSL

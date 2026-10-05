@@ -1,0 +1,42 @@
+name: "real_estate_lakehouse"
+version: "1.0.0"
+config-version: 2
+
+profile: "lakehouse_spark"
+
+model-paths: ["models"]
+analysis-paths: ["analyses"]
+test-paths: ["tests"]
+seed-paths: ["seeds"]
+macro-paths: ["macros"]
+
+target-path: "target"
+
+clean-targets:
+  - "target"
+  - "dbt_packages"
+
+on-run-start:
+  - "CREATE DATABASE IF NOT EXISTS bronze"
+  - "CREATE DATABASE IF NOT EXISTS silver"
+  - "CREATE DATABASE IF NOT EXISTS gold"
+
+models:
+  real_estate_lakehouse:
+    staging:
+      +materialized: incremental
+      +file_format: delta
+      +incremental_strategy: merge
+
+    intermediate:
+      +materialized: table
+      +file_format: delta
+
+    silver:
+      +materialized: table
+      +file_format: delta
+
+    gold:
+      +schema: gold
+      +materialized: table
+      +file_format: delta

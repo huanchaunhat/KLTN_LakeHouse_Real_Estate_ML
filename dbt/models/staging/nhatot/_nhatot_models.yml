@@ -1,0 +1,59 @@
+version: 2
+
+models:
+  - name: stg_nhatot_properties
+    description: >
+      Normalized Nhà Tốt observations.
+      Grain is one source listing per crawl snapshot.
+
+    columns:
+      - name: observation_id
+        description: Unique identifier for one listing observation.
+        tests:
+          - unique
+          - not_null
+
+      - name: listing_key
+        description: Stable key for one source listing.
+        tests:
+          - not_null
+
+      - name: source_listing_id
+        tests:
+          - not_null
+
+      - name: snapshot_id
+        tests:
+          - not_null
+
+      - name: crawl_timestamp
+        tests:
+          - not_null
+
+      - name: transaction_type
+        tests:
+          - accepted_values:
+              values:
+                - sale
+                - rent
+                - unknown
+
+      - name: primary_quality_flag
+        tests:
+          - not_null
+
+      - name: data_quality_flag
+        tests:
+          - not_null
+
+      - name: is_valid_observation
+        tests:
+          - not_null
+
+      - name: is_market_eligible
+        tests:
+          - not_null
+
+      - name: is_price_training_eligible
+        tests:
+          - not_null

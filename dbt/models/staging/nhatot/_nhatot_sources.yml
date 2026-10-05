@@ -1,0 +1,9 @@
+version: 2
+
+sources:
+  - name: raw_lakehouse
+    schema: bronze
+    description: Raw Nhà Tốt snapshots loaded by Spark into Delta Lake.
+    tables:
+      - name: raw_properties
+        description: One row per listing observation per crawl run.

@@ -1,0 +1,442 @@
+services:
+  mysql:
+    image: mysql:5.7
+    restart: unless-stopped
+    ports:
+      - "3308:3306"
+    env_file:
+      - .env
+    volumes:
+      - mysql_data:/var/lib/mysql
+    networks:
+      - data_network
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "mysqladmin ping -h localhost -u root -p$$MYSQL_ROOT_PASSWORD || exit 1"
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+  minio:
+    image: quay.io/minio/minio:latest
+    restart: unless-stopped
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    command:
+      - server
+      - /data
+      - --console-address
+      - ":9001"
+    env_file:
+      - .env
+    volumes:
+      - minio_data:/data
+    networks:
+      - data_network
+
+  hive-metastore:
+    image: bitsondatadev/hive-metastore
+    restart: unless-stopped
+    entrypoint: /entrypoint.sh
+    ports:
+      - "9083:9083"
+    environment:
+      METASTORE_DB_HOSTNAME: mysql
+    volumes:
+      - ./hive-metastore/metastore-site.xml:/opt/apache-hive-metastore-3.0.0-bin/conf/metastore-site.xml:ro
+    networks:
+      - data_network
+    depends_on:
+      mysql:
+        condition: service_healthy
+      minio:
+        condition: service_started
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z localhost 9083 || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
+  spark-master:
+    build:
+      context: ./spark
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "7077:7077"
+      - "8081:8080"
+    environment:
+      SPARK_MODE: master
+      SPARK_MASTER_HOST: 0.0.0.0
+      SPARK_RPC_AUTHENTICATION_ENABLED: "no"
+      SPARK_RPC_ENCRYPTION_ENABLED: "no"
+      SPARK_LOCAL_STORAGE_ENCRYPTION_ENABLED: "no"
+      SPARK_SSL_ENABLED: "no"
+      SPARK_USER: spark
+    volumes:
+      - ./spark/spark-defaults.conf:/opt/bitnami/spark/conf/spark-defaults.conf
+      - ./spark/hive-site.xml:/opt/bitnami/spark/conf/hive-site.xml
+      - ./scripts:/opt/bitnami/spark/scripts
+    networks:
+      - data_network
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z localhost 7077 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+  spark-worker-1:
+    build:
+      context: ./spark
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    env_file:
+      - .env
+    depends_on:
+      spark-master:
+        condition: service_healthy
+    volumes:
+      - ./spark/spark-defaults.conf:/opt/bitnami/spark/conf/spark-defaults.conf
+      - ./spark/hive-site.xml:/opt/bitnami/spark/conf/hive-site.xml
+      - ./scripts:/opt/bitnami/spark/scripts
+    networks:
+      - data_network
+
+  spark-worker-2:
+    build:
+      context: ./spark
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    env_file:
+      - .env
+    depends_on:
+      spark-master:
+        condition: service_healthy
+    volumes:
+      - ./spark/spark-defaults.conf:/opt/bitnami/spark/conf/spark-defaults.conf
+      - ./spark/hive-site.xml:/opt/bitnami/spark/conf/hive-site.xml
+      - ./scripts:/opt/bitnami/spark/scripts
+    networks:
+      - data_network
+
+  spark-thrift-server:
+    build:
+      context: ./spark
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      spark-master:
+        condition: service_healthy
+      hive-metastore:
+        condition: service_healthy
+    ports:
+      - "4040:4040"
+      - "10000:10000"
+    command: >
+      sh -c "
+      sleep 10 &&
+      ./sbin/start-thriftserver.sh
+      --driver-java-options '-Dhive.metastore.uris=thrift://hive-metastore:9083'
+      --master spark://spark-master:7077
+      --driver-cores 1
+      --driver-memory 1g
+      --total-executor-cores 1
+      --executor-cores 1
+      --executor-memory 1g
+      --conf spark.dynamicAllocation.enabled=false
+      --conf spark.cores.max=1
+      --conf spark.sql.shuffle.partitions=8
+      --conf spark.default.parallelism=4
+      "
+    volumes:
+      - ./spark/spark-defaults.conf:/opt/bitnami/spark/conf/spark-defaults.conf
+      - ./spark/hive-site.xml:/opt/bitnami/spark/conf/hive-site.xml
+      - ./scripts:/opt/bitnami/spark/scripts
+    networks:
+      - data_network
+    mem_limit: 2g
+    cpus: 1.5
+
+  mysql-airflow:
+    image: mysql:5.7
+    restart: unless-stopped
+    ports:
+      - "3307:3307"
+    environment:
+      MYSQL_ROOT_PASSWORD: ${AIRFLOW_MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: ${AIRFLOW_MYSQL_DATABASE}
+      MYSQL_USER: ${AIRFLOW_MYSQL_USER}
+      MYSQL_PASSWORD: ${AIRFLOW_MYSQL_PASSWORD}
+      MYSQL_TCP_PORT: ${AIRFLOW_MYSQL_TCP_PORT}
+    command:
+      - --default-authentication-plugin=mysql_native_password
+    volumes:
+      - ./mysql/my.cnf:/etc/mysql/my.cnf:ro
+      - mysql_airflow_data:/var/lib/mysql
+    networks:
+      - data_network
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "mysqladmin ping -h localhost -P 3307 -u root -p$$MYSQL_ROOT_PASSWORD || exit 1"
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+  airflow-webserver:
+    build:
+      context: ./airflow
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      mysql-airflow:
+        condition: service_healthy
+      spark-master:
+        condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      LOAD_EX: "n"
+      AIRFLOW__WEBSERVER__RBAC: "False"
+      AIRFLOW__WEBSERVER__SESSION_BACKEND: securecookie
+      EXECUTOR: Local
+    volumes:
+      - ./real_estate_data:/usr/local/airflow/real_estate_data
+      - ./airflow/dags:/usr/local/airflow/dags
+      - airflow_logs:/usr/local/airflow/logs
+      - ./airflow/plugins:/usr/local/airflow/plugins
+      - ./airflow/config/airflow.cfg:/usr/local/airflow/config/airflow.cfg
+      - ./airflow/jars:/usr/local/airflow/jars
+      - ./scripts:/usr/local/airflow/scripts
+      - ./dbt:/opt/airflow/dbt
+      - /var/run/docker.sock:/var/run/docker.sock
+    ports:
+      - "8088:8088"
+      - "8888:8888"
+    command: webserver
+    networks:
+      - data_network
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "curl --fail --silent --max-time 10 http://localhost:8088/health >/dev/null || exit 1"
+        ]
+      interval: 30s
+      timeout: 30s
+      retries: 5
+      start_period: 30s
+
+  airflow-scheduler:
+    build:
+      context: ./airflow
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      mysql-airflow:
+        condition: service_healthy
+      spark-master:
+        condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      LOAD_EX: "n"
+      AIRFLOW__WEBSERVER__RBAC: "False"
+      AIRFLOW__WEBSERVER__SESSION_BACKEND: securecookie
+      EXECUTOR: Local
+    volumes:
+      - ./real_estate_data:/usr/local/airflow/real_estate_data
+      - ./airflow/dags:/usr/local/airflow/dags
+      - airflow_logs:/usr/local/airflow/logs
+      - ./airflow/plugins:/usr/local/airflow/plugins
+      - ./airflow/config/airflow.cfg:/usr/local/airflow/config/airflow.cfg
+      - ./airflow/jars:/usr/local/airflow/jars
+      - ./scripts:/usr/local/airflow/scripts
+      - ./dbt:/opt/airflow/dbt
+      - /var/run/docker.sock:/var/run/docker.sock
+    command: scheduler
+    networks:
+      - data_network
+
+  superset:
+    image: apache/superset:3.0.0
+    restart: unless-stopped
+    ports:
+      - "8089:8088"
+    environment:
+      SUPERSET_SECRET_KEY: ${SUPERSET_SECRET_KEY:-change-this-secret}
+      SUPERSET_LOAD_EXAMPLES: "no"
+      SQLALCHEMY_DATABASE_URI: postgresql+psycopg2://reip:reip123@postgres:5432/reip
+    volumes:
+      - superset_data:/app/superset_home
+    networks:
+      - data_network
+    command: >
+      sh -c "
+      pip install pyhive thrift sasl thrift_sasl &&
+      superset db upgrade &&
+      superset init &&
+      gunicorn
+      --bind 0.0.0.0:8088
+      --timeout 120
+      --workers 4
+      'superset.app:create_app()'
+      "
+    depends_on:
+      postgres:
+        condition: service_healthy
+      spark-thrift-server:
+        condition: service_started
+  minio-init:
+    image: quay.io/minio/mc:latest
+    depends_on:
+      minio:
+        condition: service_started
+    entrypoint: >
+      /bin/sh -c "
+      sleep 5;
+      mc alias set local http://minio:9000
+      ${MINIO_ROOT_USER}
+      ${MINIO_ROOT_PASSWORD};
+
+      mc mb --ignore-existing local/lakehouse;
+      mc mb --ignore-existing local/mlflow;
+
+      exit 0;
+      "
+    env_file:
+      - .env
+    networks:
+      - data_network
+
+  kafka:
+    image: bitnamilegacy/kafka:3.9.0
+    restart: unless-stopped
+    ports:
+      - "${KAFKA_HOST_PORT:-9094}:9094"
+    environment:
+      KAFKA_CFG_NODE_ID: 1
+      KAFKA_CFG_PROCESS_ROLES: broker,controller
+      KAFKA_CFG_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+
+      KAFKA_CFG_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093,EXTERNAL://:9094
+      KAFKA_CFG_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,EXTERNAL://localhost:${KAFKA_HOST_PORT:-9094}
+      KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,EXTERNAL:PLAINTEXT
+      KAFKA_CFG_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_CFG_CONTROLLER_LISTENER_NAMES: CONTROLLER
+
+      KAFKA_CFG_AUTO_CREATE_TOPICS_ENABLE: "true"
+      ALLOW_PLAINTEXT_LISTENER: "yes"
+    volumes:
+      - kafka_data:/bitnami/kafka
+    networks:
+      - data_network
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "kafka-topics.sh --bootstrap-server localhost:9092 --list >/dev/null 2>&1 || exit 1"
+        ]
+      interval: 10s
+      timeout: 10s
+      retries: 10
+      start_period: 30s
+
+  postgres:
+    image: postgres:16
+    restart: unless-stopped
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_DB: reip
+      POSTGRES_USER: reip
+      POSTGRES_PASSWORD: reip123
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - data_network
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U reip -d reip"
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  mlflow:
+    image: ghcr.io/mlflow/mlflow:latest
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      minio:
+        condition: service_started
+      minio-init:
+        condition: service_completed_successfully
+    ports:
+      - "${MLFLOW_HOST_PORT:-5001}:5000"
+    environment:
+      AWS_ACCESS_KEY_ID: ${MINIO_ACCESS_KEY}
+      AWS_SECRET_ACCESS_KEY: ${MINIO_SECRET_KEY}
+      MLFLOW_S3_ENDPOINT_URL: http://minio:9000
+      # Tracking/registry do not need the background job consumers on this dev stack.
+      MLFLOW_SERVER_ENABLE_JOB_EXECUTION: ${MLFLOW_SERVER_ENABLE_JOB_EXECUTION:-false}
+    command: >
+      sh -c "
+      pip install psycopg2-binary boto3 &&
+      mlflow server
+      --host 0.0.0.0
+      --port 5000
+      --workers ${MLFLOW_WORKERS:-1}
+      --backend-store-uri postgresql://reip:reip123@postgres:5432/reip
+      --default-artifact-root s3://mlflow/
+      "
+    networks:
+      - data_network
+
+  fastapi:
+    build:
+      context: ./api
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    environment:
+      MLFLOW_TRACKING_URI: http://mlflow:5000
+      MLFLOW_S3_ENDPOINT_URL: http://minio:9000
+      AWS_ACCESS_KEY_ID: ${MINIO_ACCESS_KEY}
+      AWS_SECRET_ACCESS_KEY: ${MINIO_SECRET_KEY}
+    depends_on:
+      mlflow:
+        condition: service_started
+      minio:
+        condition: service_started
+    networks:
+      - data_network
+
+networks:
+  data_network:
+    driver: bridge
+
+volumes:
+  mysql_data:
+  mysql_airflow_data:
+  minio_data:
+  airflow_logs:
+  superset_data:
+  kafka_data:
+  postgres_data:

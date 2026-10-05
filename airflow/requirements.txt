@@ -1,0 +1,33 @@
+# Airflow & Provider
+apache-airflow[crypto,celery,postgres,hive,jdbc,mysql,spark,ssh, sensors]==2.6.1
+apache-airflow-providers-amazon==8.9.0
+apache-airflow-providers-apache-spark==4.0.1
+
+dbt-core==1.5.0
+dbt-spark==1.5.0
+
+# PySpark & Delta Lake
+pyspark==3.3.2
+delta-spark==2.2.0
+findspark
+
+# Data/ML
+pandas
+mlflow==2.3.2
+
+# Các dependency
+# Gunicorn 20 cần pkg_resources; SSH provider cũ cần paramiko.DSSKey.
+setuptools==80.9.0
+paramiko==3.5.1
+pydantic==1.10.10
+mysqlclient==2.1.1
+redis==3.2
+pendulum==2.0.5
+pyOpenSSL
+ndg-httpsclient
+pyasn1
+Flask-Session2
+Flask-Session
+connexion[swagger-ui]==2.14.2
+
+WTForms==3.0.1

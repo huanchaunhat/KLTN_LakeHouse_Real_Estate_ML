@@ -1,0 +1,57 @@
+version: 2
+
+models:
+  - name: int_listing_changes
+    description: >
+      Valid Nhà Tốt observations enriched with previous observation
+      information and listing change classification.
+
+    columns:
+      - name: observation_id
+        tests:
+          - unique
+          - not_null
+
+      - name: listing_key
+        tests:
+          - not_null
+
+      - name: source_listing_id
+        tests:
+          - not_null
+
+      - name: crawl_timestamp
+        tests:
+          - not_null
+
+      - name: previous_price_vnd
+        description: Price observed in the immediately preceding valid snapshot.
+
+      - name: price_change_vnd
+        description: Current price minus previous observed price.
+
+      - name: price_change_pct
+        description: Percentage price change from the previous valid observation.
+
+      - name: change_type
+        description: Business change between this observation and the previous one.
+        tests:
+          - not_null
+          - accepted_values:
+              values:
+                - NEW
+                - PRICE_CHANGED
+                - UPDATED
+                - UNCHANGED
+
+      - name: listing_status
+        description: >
+          Backward-compatible alias of change_type during Phase A migration.
+        tests:
+          - not_null
+          - accepted_values:
+              values:
+                - NEW
+                - PRICE_CHANGED
+                - UPDATED
+                - UNCHANGED
