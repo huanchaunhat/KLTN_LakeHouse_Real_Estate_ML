@@ -80,9 +80,29 @@ typed as (
         cast(payload.ad.longitude as string) as longitude_source_raw,
         cast(payload.ad.longitude as double) as longitude,
 
-        payload.ad_params.property_legal_document.value as legal_status,
+        -- A few listings carry raw option ids ('1', '3', '6') instead of a label.
+        case
+            when trim(payload.ad_params.property_legal_document.value) <> ''
+             and not payload.ad_params.property_legal_document.value rlike '^[0-9]+$'
+                then trim(payload.ad_params.property_legal_document.value)
+        end as legal_status,
         cast(payload.ad.deposit as bigint) as deposit_vnd,
-        payload.ad.pty_project_name as project_name,
+        -- Nhà Tốt sends '' for listings outside a project.
+        case when trim(payload.ad.pty_project_name) <> '' then trim(payload.ad.pty_project_name) end as project_name,
+
+        -- Lot shape and building attributes (strong price drivers).
+        cast(payload.ad.width as double) as width_m,
+        cast(payload.ad.length as double) as length_m,
+        cast(payload.ad.living_size as double) as living_area_m2,
+        case when trim(payload.ad_params.direction.value) <> '' then trim(payload.ad_params.direction.value) end as house_direction,
+        coalesce(payload.ad_params.furnishing_sell.value, payload.ad_params.furnishing_rent.value) as furnishing,
+        payload.ad_params.property_status.value as handover_status,
+        case
+            when trim(payload.ad_params.pty_characteristics.value) <> ''
+                then transform(split(payload.ad_params.pty_characteristics.value, ','), x -> trim(x))
+            else cast(array() as array<string>)
+        end as property_characteristics,
+        cast(payload.ad.company_ad as boolean) as is_broker,
 
         payload.ad.images as image_urls,
         cast(payload.ad.number_of_images as int) as image_count,
@@ -110,6 +130,16 @@ enriched as (
                 then cast(price_vnd as double) / area_m2
         end as price_per_m2,
 
+        array_contains(property_characteristics, 'Hẻm xe hơi') as has_car_alley,
+        array_contains(property_characteristics, 'Mặt tiền')
+            or coalesce(property_subtype = 'Nhà mặt phố, mặt tiền', false) as is_frontage,
+        array_contains(property_characteristics, 'Nhà nở hậu')
+            or array_contains(property_characteristics, 'Nở hậu') as is_wide_back,
+        array_contains(property_characteristics, 'Nhà tóp hậu') as is_narrow_back,
+        array_contains(property_characteristics, 'Nhà nát') as is_dilapidated,
+        array_contains(property_characteristics, 'Nhà chưa hoàn công') as is_not_completed,
+        array_contains(property_characteristics, 'Nhà dính quy hoạch / lộ giới') as is_planning_affected,
+
         sha2(
             concat_ws(
                 '||',
@@ -133,6 +163,13 @@ enriched as (
                 coalesce(cast(longitude as string), ''),
                 coalesce(legal_status, ''),
                 coalesce(project_name, ''),
+                coalesce(cast(width_m as string), ''),
+                coalesce(cast(length_m as string), ''),
+                coalesce(cast(living_area_m2 as string), ''),
+                coalesce(house_direction, ''),
+                coalesce(furnishing, ''),
+                coalesce(handover_status, ''),
+                array_join(property_characteristics, ','),
                 coalesce(source_status, ''),
                 coalesce(source_state, '')
             ),

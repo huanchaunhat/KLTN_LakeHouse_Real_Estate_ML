@@ -22,7 +22,7 @@ services:
       start_period: 20s
 
   minio:
-    image: quay.io/minio/minio:latest
+    image: minio/minio:latest  # quay.io đã chặn pull; dùng image có sẵn trên máy
     restart: unless-stopped
     ports:
       - "9000:9000"
@@ -277,8 +277,10 @@ services:
       SUPERSET_SECRET_KEY: ${SUPERSET_SECRET_KEY:-change-this-secret}
       SUPERSET_LOAD_EXAMPLES: "no"
       SQLALCHEMY_DATABASE_URI: postgresql+psycopg2://reip:reip123@postgres:5432/reip
+      SUPERSET_CONFIG_PATH: /app/superset_config.py
     volumes:
       - superset_data:/app/superset_home
+      - ./superset/superset_config.py:/app/superset_config.py:ro
     networks:
       - data_network
     command: >
@@ -288,7 +290,7 @@ services:
       superset init &&
       gunicorn
       --bind 0.0.0.0:8088
-      --timeout 120
+      --timeout 300
       --workers 4
       'superset.app:create_app()'
       "
@@ -298,7 +300,7 @@ services:
       spark-thrift-server:
         condition: service_started
   minio-init:
-    image: quay.io/minio/mc:latest
+    image: minio/minio:latest  # image này có sẵn mc
     depends_on:
       minio:
         condition: service_started
@@ -356,7 +358,7 @@ services:
     image: postgres:16
     restart: unless-stopped
     ports:
-      - "5432:5432"
+      - "5433:5432"
     environment:
       POSTGRES_DB: reip
       POSTGRES_USER: reip

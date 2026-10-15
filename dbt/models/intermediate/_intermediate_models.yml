@@ -55,3 +55,33 @@ models:
                 - PRICE_CHANGED
                 - UPDATED
                 - UNCHANGED
+
+  - name: int_listing_enriched
+    description: >
+      Valid observations (listing_history) prepared for Gold: cleaned
+      project/legal values, per-segment price/area outlier flags and
+      snapshot completeness. Grain: one valid observation per snapshot.
+
+    columns:
+      - name: observation_id
+        tests:
+          - unique
+          - not_null
+
+      - name: is_full_snapshot
+        description: True when the snapshot covers at least full_snapshot_min_ratio of the largest snapshot.
+        tests:
+          - not_null
+
+      - name: is_price_outlier
+        tests:
+          - not_null
+
+      - name: outlier_reason
+        tests:
+          - accepted_values:
+              values:
+                - NON_POSITIVE_PRICE
+                - NON_POSITIVE_AREA
+                - PRICE_PER_M2_OUT_OF_RANGE
+                - AREA_OUT_OF_RANGE

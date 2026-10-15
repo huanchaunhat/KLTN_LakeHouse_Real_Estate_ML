@@ -12,6 +12,18 @@ macro-paths: ["macros"]
 
 target-path: "target"
 
+vars:
+  # A snapshot is "full" when it covers at least this share of the largest one.
+  full_snapshot_min_ratio: 0.5
+  # Per-segment quantiles outside which price/m2 or area is flagged as outlier.
+  outlier_lower_quantile: 0.01
+  outlier_upper_quantile: 0.99
+  # Minimum listings in a trend cell for its median to be flagged reliable.
+  trend_min_sample: 10
+  # Range of the generated calendar dimension.
+  date_spine_start: "2024-01-01"
+  date_spine_end: "2030-12-31"
+
 clean-targets:
   - "target"
   - "dbt_packages"
