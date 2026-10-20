@@ -114,7 +114,12 @@ typed as (
         payload.ad.status as source_status,
         payload.ad.state as source_state,
 
-        to_timestamp(from_unixtime(cast(payload.ad.orig_list_time / 1000 as bigint))) as posted_at,
+        -- list_time is the last time the listing was posted or pushed to the top.
+        -- orig_list_time only appears after the first push, holding the original
+        -- post time, so a listing never pushed has its post time in list_time.
+        to_timestamp(from_unixtime(cast(
+            coalesce(payload.ad.orig_list_time, payload.ad.list_time) / 1000 as bigint
+        ))) as posted_at,
         to_timestamp(from_unixtime(cast(payload.ad.list_time / 1000 as bigint))) as source_updated_at,
 
         _source_file,

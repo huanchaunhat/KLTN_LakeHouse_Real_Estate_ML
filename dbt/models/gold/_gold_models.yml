@@ -157,6 +157,13 @@ models:
           - relationships:
               to: ref('dim_project')
               field: project_key
+      - name: posted_date_key
+        description: Post date (orig_list_time, else list_time) of the listing.
+        tests:
+          - not_null
+          - relationships:
+              to: ref('dim_date')
+              field: date_key
       - name: first_seen_date_key
         tests:
           - not_null
@@ -180,6 +187,17 @@ models:
       - name: is_active
         tests:
           - not_null
+      - name: is_initial_inventory
+        description: >
+          First seen by the initial load, i.e. already on the market before the
+          pipeline started. Not new supply in any mart.
+        tests:
+          - not_null
+      - name: removal_evidence
+        description: GONE_STATUS (404/410) or ABSENT_FROM_FULL_SNAPSHOT; NULL while active.
+        tests:
+          - accepted_values:
+              values: ['GONE_STATUS', 'ABSENT_FROM_FULL_SNAPSHOT']
       - name: removed_date_key
         tests:
           - relationships:
@@ -330,14 +348,21 @@ models:
   # ------------------------------------------------------------------------ ml
   - name: ml_price_features
     description: >
-      Feature table for sale-price prediction. Grain is one row per sale
-      listing (latest state); excludes outliers and non-eligible listings.
-      Only attributes known at prediction time are included as features.
+      Feature table for sale-price prediction. Grain is one row per distinct
+      sale property (latest state): copies of the same property posted by
+      several brokers are collapsed. Excludes outliers and non-eligible
+      listings. Only attributes known at prediction time are included as features.
     columns:
       - name: listing_key
         tests:
           - unique
           - not_null
+      - name: duplicate_count
+        description: Number of listings collapsed into this row (1 = no copy).
+        tests:
+          - not_null
+          - dbt_expectations.expect_column_values_to_be_between:
+              min_value: 1
       - name: price_vnd
         tests:
           - not_null

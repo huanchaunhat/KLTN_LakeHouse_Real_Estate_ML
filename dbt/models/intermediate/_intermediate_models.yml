@@ -69,7 +69,12 @@ models:
           - not_null
 
       - name: is_full_snapshot
-        description: True when the snapshot covers at least full_snapshot_min_ratio of the largest snapshot.
+        description: From int_crawl_snapshots.
+        tests:
+          - not_null
+
+      - name: is_initial_load_snapshot
+        description: The observation belongs to the initial load (int_crawl_snapshots.is_initial_load).
         tests:
           - not_null
 
@@ -85,3 +90,70 @@ models:
                 - NON_POSITIVE_AREA
                 - PRICE_PER_M2_OUT_OF_RANGE
                 - AREA_OUT_OF_RANGE
+
+  - name: int_crawl_snapshots
+    description: >
+      One row per crawl run. Single source of snapshot order (by start time,
+      never by snapshot_id), completeness and initial load for Silver and Gold.
+
+    columns:
+      - name: snapshot_id
+        tests:
+          - unique
+          - not_null
+
+      - name: snapshot_started_at
+        tests:
+          - not_null
+
+      - name: snapshot_seq
+        tests:
+          - unique
+          - not_null
+
+      - name: online_listing_count
+        description: Listings reached by the run with any response other than 404/410.
+
+      - name: is_full_snapshot
+        description: >
+          True when online_listing_count is at least full_snapshot_min_ratio of
+          the largest run. Only full runs may conclude that a listing is gone.
+        tests:
+          - not_null
+
+      - name: is_initial_load
+        description: Run started at or before the first full run.
+        tests:
+          - not_null
+
+  - name: int_listing_removals
+    description: >
+      When each listing left the market: the first 404/410, or the next full
+      run that did not reach it, after the last run it was online in.
+      Rate-limited and quarantined observations count as online.
+      Grain: one row per removed listing.
+
+    columns:
+      - name: listing_key
+        tests:
+          - unique
+          - not_null
+
+      - name: removed_snapshot_id
+        tests:
+          - not_null
+          - relationships:
+              to: ref('int_crawl_snapshots')
+              field: snapshot_id
+
+      - name: removed_at
+        tests:
+          - not_null
+
+      - name: removal_evidence
+        tests:
+          - not_null
+          - accepted_values:
+              values:
+                - GONE_STATUS
+                - ABSENT_FROM_FULL_SNAPSHOT

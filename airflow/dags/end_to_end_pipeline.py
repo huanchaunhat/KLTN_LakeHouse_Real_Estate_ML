@@ -4,10 +4,13 @@ from datetime import timedelta
 import pendulum
 from airflow.decorators import dag
 from airflow.operators.bash import BashOperator
+from airflow.operators.python import ShortCircuitOperator
 from airflow.providers.apache.spark.operators.spark_submit import SparkSubmitOperator
 
 DBT_PROJECT_DIR = "/opt/airflow/dbt"
 VN_TZ = "Asia/Ho_Chi_Minh"
+# Delta OPTIMIZE/VACUUM runs once a week (ISO weekday, 7 = Sunday).
+MAINTENANCE_WEEKDAY = 7
 
 # Không dùng --packages: Ivy tải lại aws-java-sdk-bundle (~280MB) từ Maven mỗi lần
 # và hay đứt giữa chừng. Driver (client mode, chạy trong Airflow) đọc jar local;
@@ -94,6 +97,10 @@ def vn_run_id(dt):
     return pendulum.instance(dt).in_timezone(VN_TZ).strftime("%Y%m%d_%H%M%S")
 
 
+def is_maintenance_day(data_interval_end, **_):
+    return pendulum.instance(data_interval_end).in_timezone(VN_TZ).isoweekday() == MAINTENANCE_WEEKDAY
+
+
 @dag(
     dag_id="end_to_end_lakehouse_pipeline",
     description="Nha Tot: crawl IDs -> crawl profiles -> Bronze -> Silver",
@@ -148,6 +155,10 @@ def reip_pipeline():
             "--output-partitions", "8",
             "--request-delay", "0.15",
             "--historical-lookback-days", "0",
+            # Stop re-crawling a listing at its first 404: removals are inferred
+            # from absence in full snapshots, and re-activated listings come
+            # back through the current ID list.
+            "--max-consecutive-gone", "1",
         ],
     )
 
@@ -213,6 +224,21 @@ dbt test {GOLD_SELECT} {DBT_ARGS}
 """,
     )
 
+    maintenance_day = ShortCircuitOperator(
+        task_id="is_maintenance_day",
+        python_callable=is_maintenance_day,
+    )
+
+    # Weekly: compact Bronze and VACUUM old Delta versions (macros/delta_maintenance.sql).
+    delta_maintenance = BashOperator(
+        task_id="delta_maintenance",
+        bash_command=f"""
+set -e
+cd {DBT_PROJECT_DIR}
+dbt run-operation delta_maintenance {DBT_ARGS}
+""",
+    )
+
     (
         crawl_nhatot_ids
         >> crawl_nhatot_profiles
@@ -221,6 +247,8 @@ dbt test {GOLD_SELECT} {DBT_ARGS}
         >> dbt_test_silver
         >> dbt_run_gold
         >> dbt_test_gold
+        >> maintenance_day
+        >> delta_maintenance
     )
 
 

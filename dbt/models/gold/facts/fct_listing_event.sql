@@ -7,7 +7,7 @@
 --   NEW            first time the listing is crawled
 --   PRICE_CHANGED  price differs from the previous observation
 --   UPDATED        content changed, price unchanged
---   REMOVED        missing from a later full snapshot (see fct_listing.removed_at)
+--   REMOVED        404/410 or missing from a later full snapshot (see int_listing_removals)
 -- Source of the market supply / liquidity mart.
 
 with history as (
@@ -15,17 +15,11 @@ with history as (
     from {{ ref('int_listing_enriched') }}
 ),
 
--- Listings found by the first full crawl were already on the market before the
--- pipeline started, so their NEW events are not new supply.
--- snapshot_id is yyyyMMdd_HHmmss, so it sorts in crawl order.
-initial_load as (
-    select min(snapshot_id) as initial_load_snapshot_id
-    from history
-    where is_full_snapshot
-),
-
+-- Listings found by the initial load were already on the market before the
+-- pipeline started, so their NEW events are not new supply. The flag comes
+-- from fct_listing, which the price-trend marts also use.
 listing_first_seen as (
-    select listing_key, first_seen_at, posted_at
+    select listing_key, first_seen_at, posted_at, is_initial_inventory
     from {{ ref('fct_listing') }}
 ),
 
@@ -49,6 +43,7 @@ observed_events as (
         h.price_per_m2,
         f.first_seen_at,
         f.posted_at,
+        f.is_initial_inventory,
         h.is_market_eligible,
         h.is_price_outlier
     from history h
@@ -78,6 +73,7 @@ removed_events as (
         current_price_per_m2 as price_per_m2,
         first_seen_at,
         posted_at,
+        is_initial_inventory,
         is_market_eligible,
         is_price_outlier
     from {{ ref('fct_listing') }}
@@ -113,14 +109,12 @@ select
     e.area_m2,
     e.price_per_m2,
     datediff(to_date(e.event_at), to_date(e.first_seen_at)) as days_since_first_seen,
-    -- posted_at is missing for about half of the listings; fall back to first crawl.
     datediff(to_date(e.event_at), to_date(coalesce(e.posted_at, e.first_seen_at))) as days_on_market,
 
     -- flags
-    e.event_type = 'NEW' and e.snapshot_id <= i.initial_load_snapshot_id as is_initial_load,
+    e.event_type = 'NEW' and e.is_initial_inventory as is_initial_load,
     coalesce(e.price_change_vnd < 0, false) as is_price_decrease,
     coalesce(e.price_change_vnd > 0, false) as is_price_increase,
     e.is_market_eligible,
     e.is_price_outlier
 from events e
-cross join initial_load i

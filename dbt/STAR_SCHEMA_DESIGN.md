@@ -16,6 +16,8 @@ Nhà Tốt API ──► Landing (MinIO) ──► BRONZE ───────�
                                     (raw JSON, Delta) int_listing_changes             price-trend marts
                                                       listing_history / current       ML feature table
                                                       listing_quarantine
+                                                      int_crawl_snapshots
+                                                      int_listing_removals
                                                       int_listing_enriched ─────────►
 ```
 
@@ -45,8 +47,8 @@ Gold chỉ được build khi Silver đã qua toàn bộ test (quality gate).
 
 - `is_price_outlier`, `outlier_reason`: giá/m² hoặc diện tích nằm ngoài [p1, p99] **trong từng phân khúc**
   (transaction_type × property_type), hoặc giá ≤ 0. Outlier chỉ được gắn cờ, không bị xoá.
-- `is_full_snapshot`: snapshot có số listing ≥ 50% snapshot lớn nhất. Lần crawl dở dang không được dùng
-  để kết luận một tin đã bị gỡ.
+- `is_full_snapshot`, `is_initial_load_snapshot`: lấy từ `int_crawl_snapshots` (xem mục 3). Lần crawl dở dang
+  không được dùng để kết luận một tin đã bị gỡ.
 
 Các ngưỡng nằm trong `vars` của `dbt_project.yml`.
 
@@ -86,17 +88,22 @@ cùng macro nên key luôn khớp. NULL được ánh xạ về member "Không r
 | `fct_listing` | 1 tin | Trạng thái mới nhất của mỗi tin, dùng cho bảng ML; số lần đổi giá; milestone `removed_at` (xem dưới), `is_active = removed_at is null` |
 | `fct_listing_event` | 1 sự kiện | `NEW`, `PRICE_CHANGED`, `UPDATED`, `REMOVED`. Nguồn của mart nguồn cung/thanh khoản |
 
-**Quy tắc gỡ tin:** một tin bị coi là gỡ tại *full snapshot đầu tiên bắt đầu sau lần crawl cuối cùng thấy tin*.
-Snapshot dở dang không bao giờ kết luận gỡ tin. Vì Gold được build lại toàn bộ mỗi lần chạy, một tin biến mất
-rồi xuất hiện lại sẽ tự động không còn bị tính là gỡ. Logic này chỉ nằm trong `fct_listing`; `fct_listing_event`
-lấy sự kiện `REMOVED` từ đó, và test `assert_listing_events_reconcile` đảm bảo hai bảng khớp nhau.
+**Thứ tự và độ đầy đủ của lần crawl** được tính ở một nơi duy nhất là `int_crawl_snapshots`. Các lần crawl được sắp theo thời gian bắt đầu, không theo chuỗi `snapshot_id`, vì `legacy_…` xếp sau `2026…` theo thứ tự chuỗi. Một lần crawl được coi là đầy đủ khi số tin nó chạm tới mà vẫn còn online (mọi phản hồi trừ 404/410) đạt ≥ `full_snapshot_min_ratio` so với lần lớn nhất.
 
-**Tin của lần crawl đầu tiên:** sự kiện `NEW` thuộc full snapshot đầu tiên được gắn `is_initial_load = true`.
-Đó là tồn kho có sẵn khi pipeline bắt đầu chạy, không phải nguồn cung mới, nên không được đếm vào `new_listing_count`.
+**Quy tắc gỡ tin** (`int_listing_removals`): một tin "online" trong lần crawl khi được crawl tới với phản hồi khác 404/410. Như vậy tin bị rate-limit (429/5xx) hay bị quarantine (ví dụ người đăng xoá giá) vẫn tính là đang rao. Sau lần cuối tin online, tin bị coi là gỡ tại thời điểm sớm nhất trong hai mốc:
+- `GONE_STATUS`: nguồn trả 404/410;
+- `ABSENT_FROM_FULL_SNAPSHOT`: lần crawl đầy đủ kế tiếp không chạm tới tin.
+
+Snapshot dở dang không bao giờ kết luận tin bị gỡ. Gold được build lại toàn bộ mỗi lần chạy, nên tin xuất hiện lại sẽ tự động hết bị tính là gỡ. `fct_listing_event` lấy sự kiện `REMOVED` từ `fct_listing`. Test `assert_listing_events_reconcile` đảm bảo hai bảng khớp nhau, còn `assert_removed_listings_not_online` đảm bảo không tin nào bị gỡ mà vẫn online sau đó.
+
+**Tồn kho ban đầu:** tin được thấy lần đầu ở các lần crawl đến hết full snapshot đầu tiên có `fct_listing.is_initial_inventory = true`. Đó là tồn kho có sẵn khi pipeline bắt đầu chạy, không phải nguồn cung mới. Cả `agg_market_supply_weekly` lẫn `agg_price_trend_*` đều dùng cờ này để không đếm những tin đó vào `new_listing_count`.
 
 ## 4. Bài toán 1 — Dự đoán giá: `ml_price_features`
 
-- **Grain:** 1 tin **bán** (trạng thái mới nhất), chỉ gồm tin `is_price_training_eligible` và không phải outlier.
+- **Grain:** 1 BĐS **bán** riêng biệt (trạng thái mới nhất), chỉ gồm tin `is_price_training_eligible` và không phải outlier.
+  Các bản sao của cùng một BĐS do nhiều môi giới đăng (trùng loại, phường, toạ độ làm tròn 4 chữ số, diện tích,
+  số phòng, số tầng, giá) được gộp lại, giữ bản thấy gần nhất. `duplicate_count` cho biết đã gộp bao nhiêu tin.
+  Nếu không gộp, khi chia train/test ngẫu nhiên, cùng một BĐS sẽ nằm ở cả hai tập.
 - **Feature:** vị trí (quận, phường, đường, lat/long, dự án), loại BĐS, kích thước (diện tích, ngang, dài,
   diện tích sử dụng), số phòng/tầng, mặt tiền/hẻm xe hơi/nở hậu, nội thất, hướng, pháp lý, môi giới.
 - **Target:** `price_vnd`, `log_price_vnd` (khuyến nghị dùng log vì giá lệch phải), `price_per_m2`.

@@ -1,6 +1,7 @@
 -- Property category hierarchy: property_type > property_subtype.
 -- Grain: one row per (property_type, property_subtype) seen in valid history.
 
+
 with types as (
     select distinct
         property_type,

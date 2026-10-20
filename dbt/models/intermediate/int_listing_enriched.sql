@@ -13,23 +13,10 @@ with history as (
     from {{ ref('listing_history') }}
 ),
 
--- A crawl run can be partial (e.g. a retry that only re-fetched a few
--- listings). Only "full" snapshots may be used to decide whether a listing
--- is still on the market.
-snapshot_stats as (
-    select
-        snapshot_id,
-        count(distinct listing_key) as snapshot_listing_count
-    from history
-    group by snapshot_id
-),
-
-full_snapshots as (
-    select snapshot_id
-    from snapshot_stats
-    where snapshot_listing_count >= {{ var('full_snapshot_min_ratio') }} * (
-        select max(snapshot_listing_count) from snapshot_stats
-    )
+-- Snapshot order, completeness and initial load (see int_crawl_snapshots).
+snapshots as (
+    select snapshot_id, snapshot_started_at, is_full_snapshot, is_initial_load
+    from {{ ref('int_crawl_snapshots') }}
 ),
 
 -- Outlier bounds are computed per market segment on the latest state of each
@@ -50,7 +37,9 @@ outlier_bounds as (
 enriched as (
     select
         h.*,
-        f.snapshot_id is not null as is_full_snapshot,
+        s.snapshot_started_at,
+        s.is_full_snapshot,
+        s.is_initial_load as is_initial_load_snapshot,
 
         case
             when h.price_vnd is null or h.price_vnd <= 0 then 'NON_POSITIVE_PRICE'
@@ -61,8 +50,8 @@ enriched as (
               or h.area_m2 > b.area_m2_upper then 'AREA_OUT_OF_RANGE'
         end as outlier_reason
     from history h
-    left join full_snapshots f
-        on h.snapshot_id = f.snapshot_id
+    inner join snapshots s
+        on h.snapshot_id = s.snapshot_id
     left join outlier_bounds b
         on h.transaction_type = b.transaction_type
        and h.property_type <=> b.property_type

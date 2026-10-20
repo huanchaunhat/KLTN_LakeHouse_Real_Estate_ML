@@ -48,7 +48,10 @@ period_listings as (
         r.area_m2,
         r.had_price_cut,
         r.had_price_rise,
-        cast(date_trunc('{{ period }}', fl.first_seen_at) as date) = r.period_start as is_new_in_period,
+        -- Same definition of new supply as agg_market_supply_weekly: stock of
+        -- the initial load is not new.
+        cast(date_trunc('{{ period }}', fl.first_seen_at) as date) = r.period_start
+            and not fl.is_initial_inventory as is_new_in_period,
         loc.province,
         loc.area_zone,
         loc.district,

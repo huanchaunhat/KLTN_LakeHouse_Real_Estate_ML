@@ -183,12 +183,23 @@ def load_bronze(spark, args):
         if DeltaTable.isDeltaTable(spark, BRONZE_LOCATION):
             target = DeltaTable.forPath(spark, BRONZE_LOCATION)
 
+            # Literal crawl_date values let Delta prune the target to the
+            # partitions of this run instead of scanning the whole history.
+            # A snapshot_id belongs to a single crawl_date, so no match is lost.
+            batch_dates = sorted(
+                row["crawl_date"].isoformat()
+                for row in valid.select("crawl_date").distinct().collect()
+            )
+            date_list = ", ".join(f"DATE'{d}'" for d in batch_dates)
+
             (
                 target.alias("t")
                 .merge(
                     valid.alias("s"),
-                    """
-                    t.source = s.source
+                    f"""
+                    t.crawl_date IN ({date_list})
+                    AND t.crawl_date = s.crawl_date
+                    AND t.source = s.source
                     AND t.source_listing_id = s.source_listing_id
                     AND t.snapshot_id = s.snapshot_id
                     """,
