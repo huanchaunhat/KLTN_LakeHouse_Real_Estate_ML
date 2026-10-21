@@ -1,0 +1,388 @@
+version: 2
+
+models:
+  # ---------------------------------------------------------------- dimensions
+  - name: dim_date
+    description: Calendar dimension. Grain is one row per day.
+    columns:
+      - name: date_key
+        description: Surrogate key in yyyyMMdd format.
+        tests:
+          - unique
+          - not_null
+      - name: date_day
+        tests:
+          - unique
+          - not_null
+
+  - name: dim_location
+    description: >
+      Administrative hierarchy province > district > ward.
+      Grain is one row per (province_id, district_id, ward_id).
+    columns:
+      - name: location_key
+        tests:
+          - unique
+          - not_null
+      - name: district
+        tests:
+          - not_null
+      - name: area_zone
+        tests:
+          - accepted_values:
+              values: ['Nội thành', 'Ngoại thành', 'Không rõ']
+
+  - name: dim_property_type
+    description: Property type > subtype hierarchy.
+    columns:
+      - name: property_type_key
+        tests:
+          - unique
+          - not_null
+      - name: property_category
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['HOUSE', 'APARTMENT', 'LAND', 'ROOM', 'COMMERCIAL', 'OTHER']
+
+  - name: dim_legal_status
+    description: Legal document status grouped into categories, with an unknown member.
+    columns:
+      - name: legal_status_key
+        tests:
+          - unique
+          - not_null
+      - name: legal_category
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['Có sổ', 'Đang chờ sổ', 'Giấy tờ khác', 'Không có sổ', 'Không rõ']
+
+  - name: dim_project
+    description: >
+      Real-estate project a listing belongs to, placed in its most frequent
+      district. Grain is one row per project, plus a "Không thuộc dự án" member.
+    columns:
+      - name: project_key
+        tests:
+          - unique
+          - not_null
+      - name: project_name
+        tests:
+          - unique
+          - not_null
+
+
+  # --------------------------------------------------------------------- facts
+  - name: fct_listing_snapshot
+    description: >
+      Periodic snapshot fact. Grain is one valid listing observation per
+      crawl snapshot.
+    columns:
+      - name: observation_id
+        tests:
+          - unique
+          - not_null
+      - name: listing_key
+        tests:
+          - not_null
+          - relationships:
+              to: ref('fct_listing')
+              field: listing_key
+      - name: snapshot_date_key
+        tests:
+          - not_null
+          - relationships:
+              to: ref('dim_date')
+              field: date_key
+      - name: location_key
+        tests:
+          - not_null
+          - relationships:
+              to: ref('dim_location')
+              field: location_key
+      - name: property_type_key
+        tests:
+          - not_null
+          - relationships:
+              to: ref('dim_property_type')
+              field: property_type_key
+      - name: legal_status_key
+        tests:
+          - not_null
+          - relationships:
+              to: ref('dim_legal_status')
+              field: legal_status_key
+      - name: project_key
+        tests:
+          - not_null
+          - relationships:
+              to: ref('dim_project')
+              field: project_key
+      - name: price_vnd
+        tests:
+          - dbt_expectations.expect_column_values_to_be_between:
+              min_value: 0
+
+  - name: fct_listing
+    description: >
+      Accumulating snapshot fact of the listing lifecycle.
+      Grain is one row per listing.
+    columns:
+      - name: listing_key
+        tests:
+          - unique
+          - not_null
+      - name: location_key
+        tests:
+          - not_null
+          - relationships:
+              to: ref('dim_location')
+              field: location_key
+      - name: property_type_key
+        tests:
+          - not_null
+          - relationships:
+              to: ref('dim_property_type')
+              field: property_type_key
+      - name: legal_status_key
+        tests:
+          - not_null
+          - relationships:
+              to: ref('dim_legal_status')
+              field: legal_status_key
+      - name: project_key
+        tests:
+          - not_null
+          - relationships:
+              to: ref('dim_project')
+              field: project_key
+      - name: posted_date_key
+        description: Post date (orig_list_time, else list_time) of the listing.
+        tests:
+          - not_null
+          - relationships:
+              to: ref('dim_date')
+              field: date_key
+      - name: first_seen_date_key
+        tests:
+          - not_null
+          - relationships:
+              to: ref('dim_date')
+              field: date_key
+      - name: last_seen_date_key
+        tests:
+          - not_null
+          - relationships:
+              to: ref('dim_date')
+              field: date_key
+      - name: observation_count
+        tests:
+          - dbt_expectations.expect_column_values_to_be_between:
+              min_value: 1
+      - name: days_tracked
+        tests:
+          - dbt_expectations.expect_column_values_to_be_between:
+              min_value: 0
+      - name: is_active
+        tests:
+          - not_null
+      - name: is_initial_inventory
+        description: >
+          First seen by the initial load, i.e. already on the market before the
+          pipeline started. Not new supply in any mart.
+        tests:
+          - not_null
+      - name: removal_evidence
+        description: GONE_STATUS (404/410) or ABSENT_FROM_FULL_SNAPSHOT; NULL while active.
+        tests:
+          - accepted_values:
+              values: ['GONE_STATUS', 'ABSENT_FROM_FULL_SNAPSHOT']
+      - name: removed_date_key
+        tests:
+          - relationships:
+              to: ref('dim_date')
+              field: date_key
+
+  - name: fct_listing_event
+    description: >
+      Transaction fact of listing lifecycle events (NEW, PRICE_CHANGED,
+      UPDATED, REMOVED). Grain is one row per event. NEW events of the first
+      full crawl are flagged is_initial_load.
+    columns:
+      - name: event_id
+        tests:
+          - unique
+          - not_null
+      - name: listing_key
+        tests:
+          - not_null
+          - relationships:
+              to: ref('fct_listing')
+              field: listing_key
+      - name: event_type
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['NEW', 'PRICE_CHANGED', 'UPDATED', 'REMOVED']
+      - name: event_date_key
+        tests:
+          - not_null
+          - relationships:
+              to: ref('dim_date')
+              field: date_key
+      - name: location_key
+        tests:
+          - not_null
+          - relationships:
+              to: ref('dim_location')
+              field: location_key
+      - name: property_type_key
+        tests:
+          - not_null
+          - relationships:
+              to: ref('dim_property_type')
+              field: property_type_key
+      - name: legal_status_key
+        tests:
+          - not_null
+          - relationships:
+              to: ref('dim_legal_status')
+              field: legal_status_key
+      - name: project_key
+        tests:
+          - not_null
+          - relationships:
+              to: ref('dim_project')
+              field: project_key
+      - name: days_since_first_seen
+        tests:
+          - dbt_expectations.expect_column_values_to_be_between:
+              min_value: 0
+
+  # --------------------------------------------------------------------- marts
+  - name: agg_price_trend_weekly
+    description: >
+      Weekly price trend. Grain is one row per (period, geo_level,
+      geo_name, transaction_type, property_type). geo_level is CITY, ZONE or
+      DISTRICT; medians are computed from listings at every level. Each listing
+      is counted once per period. Outliers are excluded.
+    tests:
+      - dbt_expectations.expect_compound_columns_to_be_unique:
+          column_list: ['period_key', 'geo_level', 'geo_name', 'transaction_type', 'property_type']
+    columns:
+      - name: period_key
+        tests:
+          - not_null
+      - name: geo_level
+        tests:
+          - accepted_values:
+              values: ['CITY', 'ZONE', 'DISTRICT']
+      - name: geo_name
+        tests:
+          - not_null
+      - name: listing_count
+        tests:
+          - dbt_expectations.expect_column_values_to_be_between:
+              min_value: 1
+      - name: median_price_per_m2
+        tests:
+          - not_null
+
+  - name: agg_price_trend_monthly
+    description: >
+      Monthly price trend. Grain is one row per (period, geo_level,
+      geo_name, transaction_type, property_type). geo_level is CITY, ZONE or
+      DISTRICT; medians are computed from listings at every level. Each listing
+      is counted once per period. Outliers are excluded.
+    tests:
+      - dbt_expectations.expect_compound_columns_to_be_unique:
+          column_list: ['period_key', 'geo_level', 'geo_name', 'transaction_type', 'property_type']
+    columns:
+      - name: period_key
+        tests:
+          - not_null
+      - name: geo_level
+        tests:
+          - accepted_values:
+              values: ['CITY', 'ZONE', 'DISTRICT']
+      - name: geo_name
+        tests:
+          - not_null
+      - name: listing_count
+        tests:
+          - dbt_expectations.expect_column_values_to_be_between:
+              min_value: 1
+      - name: median_price_per_m2
+        tests:
+          - not_null
+
+  - name: agg_market_supply_weekly
+    description: >
+      Weekly market supply and liquidity (active, new, removed listings, price
+      cuts, days on market at removal). Same grain as agg_price_trend_weekly.
+      NEW events of the initial crawl are excluded.
+    tests:
+      - dbt_expectations.expect_compound_columns_to_be_unique:
+          column_list: ['period_key', 'geo_level', 'geo_name', 'transaction_type', 'property_type']
+    columns:
+      - name: period_key
+        tests:
+          - not_null
+      - name: geo_level
+        tests:
+          - accepted_values:
+              values: ['CITY', 'ZONE', 'DISTRICT']
+      - name: geo_name
+        tests:
+          - not_null
+      - name: active_listing_count
+        tests:
+          - dbt_expectations.expect_column_values_to_be_between:
+              min_value: 0
+      - name: removal_rate_pct
+        tests:
+          - dbt_expectations.expect_column_values_to_be_between:
+              min_value: 0
+
+  # ------------------------------------------------------------------------ ml
+  - name: ml_price_features
+    description: >
+      Feature table for sale-price prediction. Grain is one row per distinct
+      sale property (latest state): copies of the same property posted by
+      several brokers are collapsed. Excludes outliers and non-eligible
+      listings. Only attributes known at prediction time are included as features.
+    columns:
+      - name: listing_key
+        tests:
+          - unique
+          - not_null
+      - name: duplicate_count
+        description: Number of listings collapsed into this row (1 = no copy).
+        tests:
+          - not_null
+          - dbt_expectations.expect_column_values_to_be_between:
+              min_value: 1
+      - name: price_vnd
+        tests:
+          - not_null
+          - dbt_expectations.expect_column_values_to_be_between:
+              min_value: 0
+              strictly: true
+      - name: area_m2
+        tests:
+          - not_null
+          - dbt_expectations.expect_column_values_to_be_between:
+              min_value: 0
+              strictly: true
+      - name: width_m
+        tests:
+          - dbt_expectations.expect_column_values_to_be_between:
+              min_value: 0
+              max_value: 100
+      - name: district_id
+        tests:
+          - not_null
+      - name: property_category
+        tests:
+          - not_null

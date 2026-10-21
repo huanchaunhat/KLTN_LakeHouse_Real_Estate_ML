@@ -61,14 +61,16 @@ wait_for_port "MySQL" "$MYSQL_HOST" "$MYSQL_PORT"
 case "$1" in
   webserver)
     airflow db init 
-    airflow connections add 'spark_master' \
+    # db init tạo sẵn spark_default trỏ tới yarn; tạo lại để DAG submit lên Spark standalone.
+    airflow connections delete 'spark_default' >/dev/null 2>&1 || true
+    airflow connections add 'spark_default' \
           --conn-type 'spark' \
-          --conn-host 'spark://spark-master:7077'
+          --conn-host 'spark://spark-master' \
+          --conn-port '7077' \
+          --conn-extra '{"deploy-mode": "client"}'
 
-    if [ "$AIRFLOW__CORE__EXECUTOR" = "LocalExecutor" ] || [ "$AIRFLOW__CORE__EXECUTOR" = "SequentialExecutor" ]; then
-      # With the "Local" and "Sequential" executors, the scheduler should run in the same container.
-      airflow scheduler &
-    fi
+    # The scheduler runs in its own container (airflow-scheduler). Starting a
+    # second one here doubles the executor pool and runs tasks in both places.
 
     # Create the airflow admin user
     airflow users create \

@@ -1,8 +1,17 @@
 {{ config(
-    materialized='table',
+    materialized='incremental',
     file_format='delta',
+    unique_key='listing_key',
+    incremental_strategy='merge',
+    on_schema_change='append_new_columns',
     schema='silver'
 ) }}
+
+-- Latest valid observation of each listing. Grain: one row per listing_key.
+--
+-- Incremental: only listings with rows (re)written in int_listing_changes since
+-- the last run are re-ranked. Those rows always include the listing's latest
+-- observation (a late run recomputes the whole listing there).
 
 with ranked as (
     select
@@ -16,6 +25,9 @@ with ranked as (
                 observation_id desc
         ) as current_rank
     from {{ ref('listing_history') }}
+    {% if is_incremental() %}
+    where {{ incremental_batch_predicate(ref('int_listing_changes'), 'changes_loaded_at') }}
+    {% endif %}
 )
 
 select
@@ -57,6 +69,21 @@ select
     legal_status,
     deposit_vnd,
     project_name,
+    width_m,
+    length_m,
+    living_area_m2,
+    house_direction,
+    furnishing,
+    handover_status,
+    property_characteristics,
+    is_broker,
+    has_car_alley,
+    is_frontage,
+    is_wide_back,
+    is_narrow_back,
+    is_dilapidated,
+    is_not_completed,
+    is_planning_affected,
     image_urls,
     image_count,
     phone_hash,
@@ -80,6 +107,7 @@ select
     listing_status,
     _source_file,
     _ingested_at,
-    transformed_at
+    transformed_at,
+    changes_loaded_at
 from ranked
 where current_rank = 1

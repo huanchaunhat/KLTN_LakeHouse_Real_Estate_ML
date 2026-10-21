@@ -14,6 +14,7 @@ from pyspark import StorageLevel
 from pyspark.sql import SparkSession
 from pyspark.sql.functions import (
     col,
+    countDistinct,
     date_sub,
     lit,
     max as spark_max,
@@ -25,6 +26,8 @@ ID_LANDING_ROOT = "s3a://lakehouse/landing/source=nhatot_ids"
 PROFILE_LANDING_ROOT = "s3a://lakehouse/landing/source=nhatot"
 BRONZE_LOCATION = "s3a://lakehouse/bronze/source=nhatot/raw_properties"
 HEADERS = {"User-Agent": "Mozilla/5.0"}
+# Statuses meaning the listing was taken down.
+GONE_HTTP_STATUSES = (404, 410)
 
 def parse_args():
     parser = argparse.ArgumentParser()
@@ -41,6 +44,16 @@ def parse_args():
         help=(
             "0 = crawl every listing that has ever had a successful Bronze profile; "
             ">0 = only keep listings successfully seen within this many days."
+        ),
+    )
+    parser.add_argument(
+        "--max-consecutive-gone",
+        type=int,
+        default=1,
+        help=(
+            "Stop re-crawling a historical listing after this many consecutive "
+            "404/410 responses since its last successful profile. A listing that "
+            "reappears in the current ID list is still crawled. 0 = never stop."
         ),
     )
     return parser.parse_args()
@@ -264,27 +277,59 @@ def read_current_ids(spark, args):
     return input_path, current
 
 
+def read_gone_ids(observations, successful, max_consecutive_gone):
+    """IDs whose responses since their last successful profile are all gone
+    statuses, at least max_consecutive_gone times (counted per crawl run)."""
+    last_success = (
+        successful
+        .groupBy("source_listing_id")
+        .agg(spark_max("crawl_timestamp").alias("last_success_at"))
+    )
+
+    return (
+        observations
+        .filter(col("http_status").isin(*GONE_HTTP_STATUSES))
+        .join(last_success, on="source_listing_id", how="inner")
+        .filter(col("crawl_timestamp") > col("last_success_at"))
+        .groupBy("source_listing_id")
+        .agg(countDistinct("snapshot_id").alias("gone_count"))
+        .filter(col("gone_count") >= max_consecutive_gone)
+        .select("source_listing_id")
+    )
+
+
 def read_historical_ids(spark, args):
+    empty = spark.createDataFrame([], "source_listing_id string")
     if not DeltaTable.isDeltaTable(spark, BRONZE_LOCATION):
-        empty = spark.createDataFrame([], "source_listing_id string, listing_type string")
-        return empty, empty
+        empty_typed = spark.createDataFrame([], "source_listing_id string, listing_type string")
+        return empty_typed, empty, empty
 
     bronze = spark.read.format("delta").load(BRONZE_LOCATION)
 
-    successful = (
+    observations = (
         bronze
         .filter(col("source") == "nhatot")
+        .filter(col("source_listing_id").isNotNull())
+        .withColumn("source_listing_id", col("source_listing_id").cast("string"))
+    )
+
+    successful = (
+        observations
         .filter(col("http_status") == 200)
         .filter(col("payload").isNotNull())
-        .filter(col("source_listing_id").isNotNull())
         .filter(col("payload.ad.type").isin("s", "u"))
     )
 
     known_all = (
         successful
-        .select(col("source_listing_id").cast("string").alias("source_listing_id"))
+        .select("source_listing_id")
         .dropDuplicates(["source_listing_id"])
     )
+
+    if args.max_consecutive_gone > 0:
+        gone = read_gone_ids(observations, successful, args.max_consecutive_gone)
+    else:
+        gone = empty
 
     if args.historical_lookback_days > 0:
         cutoff = date_sub(to_date(lit(args.crawl_date)), args.historical_lookback_days)
@@ -293,14 +338,15 @@ def read_historical_ids(spark, args):
     historical = (
         successful
         .select(
-            col("source_listing_id").cast("string").alias("source_listing_id"),
+            "source_listing_id",
             col("payload.ad.type").cast("string").alias("listing_type"),
         )
         .groupBy("source_listing_id")
         .agg(spark_max("listing_type").alias("listing_type"))
+        .join(gone, on="source_listing_id", how="left_anti")
     )
 
-    return historical, known_all
+    return historical, known_all, gone
 
 
 def main():
@@ -330,13 +376,14 @@ def main():
             delete_path(sc, output)
 
         id_input_path, current_ids = read_current_ids(spark, args)
-        historical_ids, known_all = read_historical_ids(spark, args)
+        historical_ids, known_all, gone_ids = read_historical_ids(spark, args)
 
         # ID sets are compact compared with full profile payloads, so MEMORY_AND_DISK
         # avoids repeatedly reading/shuffling Bronze while keeping spill safety.
         current_ids = current_ids.persist(StorageLevel.MEMORY_AND_DISK)
         historical_ids = historical_ids.persist(StorageLevel.MEMORY_AND_DISK)
         known_all = known_all.persist(StorageLevel.MEMORY_AND_DISK)
+        gone_ids = gone_ids.persist(StorageLevel.MEMORY_AND_DISK)
 
         try:
             current_count = current_ids.count()
@@ -345,6 +392,7 @@ def main():
 
             historical_count = historical_ids.count()
             known_count = known_all.count()
+            gone_count = gone_ids.count()
             new_id_count = current_ids.join(
                 known_all,
                 on="source_listing_id",
@@ -352,7 +400,8 @@ def main():
             ).count()
 
             # Crawl every ID discovered today PLUS previously successful IDs so that
-            # price changes can be tracked across snapshots.
+            # price changes can be tracked across snapshots. Historical IDs that keep
+            # returning 404 are dropped, unless they are listed again today.
             targets = (
                 current_ids
                 .unionByName(historical_ids)
@@ -377,6 +426,8 @@ def main():
                     f"current={current_count:,}, known_before={known_count:,}, "
                     f"new={new_id_count:,}, historical_pool={historical_count:,}, "
                     f"historical_only={historical_only_count:,}, "
+                    f"gone_skipped={gone_count:,} "
+                    f"(>= {args.max_consecutive_gone} consecutive 404/410), "
                     f"target_total={target_count:,}",
                     flush=True,
                 )
@@ -439,6 +490,7 @@ def main():
             current_ids.unpersist()
             historical_ids.unpersist()
             known_all.unpersist()
+            gone_ids.unpersist()
     finally:
         spark.stop()
 
