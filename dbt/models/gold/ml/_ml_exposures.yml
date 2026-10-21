@@ -1,0 +1,17 @@
+version: 2
+
+exposures:
+  - name: price_model
+    label: Sale price model
+    type: ml
+    maturity: medium
+    url: http://localhost:5001/#/models/price_model
+    description: >
+      MLflow registered model `price_model`, trained weekly by the Airflow DAG
+      `train_price_model` (scripts/train_price_model.py) once Gold passed its
+      tests. Only the `champion` alias is served by the FastAPI `/predict`
+      endpoint; its holdout predictions are written to gold.ml_price_predictions.
+    depends_on:
+      - ref('ml_price_features')
+    owner:
+      name: theanhtran

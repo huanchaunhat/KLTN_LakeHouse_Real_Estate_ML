@@ -2,10 +2,10 @@
   Weekly Delta Lake housekeeping, run by the Airflow DAG:
     dbt run-operation delta_maintenance
 
-  Silver and Gold tables are rewritten on every run, and Delta keeps the files
-  of old versions until VACUUM removes them, so MinIO would otherwise grow
-  without bound. Bronze is append/merge only: OPTIMIZE compacts the small
-  files that daily MERGEs leave behind.
+  Table models are rewritten on every run, and Delta keeps the files of old
+  versions until VACUUM removes them, so MinIO would otherwise grow without
+  bound. Bronze and the incremental models are only merged into: OPTIMIZE
+  compacts the small files that daily MERGEs leave behind.
 
   retain_hours keeps that much time travel for rollback (RESTORE TABLE ...
   TO VERSION AS OF ...). Delta refuses less than 168 hours by default.
@@ -27,6 +27,10 @@
         {% set relation = adapter.get_relation(
             database=node.database, schema=node.schema, identifier=node.alias) %}
         {% if relation is not none %}
+            {% if node.config.materialized == 'incremental' %}
+                {% do log('OPTIMIZE ' ~ relation, info=true) %}
+                {% do run_query('OPTIMIZE ' ~ relation) %}
+            {% endif %}
             {% do log('VACUUM ' ~ relation, info=true) %}
             {% do run_query('VACUUM ' ~ relation ~ ' RETAIN ' ~ retain_hours ~ ' HOURS') %}
         {% endif %}

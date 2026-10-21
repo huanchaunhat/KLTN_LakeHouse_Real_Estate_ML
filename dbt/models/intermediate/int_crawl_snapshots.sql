@@ -14,27 +14,19 @@
 -- (any observation except 404/410), so a run hit by rate limiting is not
 -- mistaken for a smaller market. A partial run (e.g. a retry that only
 -- re-fetched a few listings) is not full and never concludes a removal.
+--
+-- The counts come from int_crawl_snapshot_stats, which only recounts new
+-- runs; this model only orders and flags the (few) runs, so it stays a table.
 
-with observations as (
+with stats as (
     select
         snapshot_id,
-        listing_key,
-        crawl_timestamp,
-        coalesce(http_status in (404, 410), false) as is_gone,
-        is_valid_observation
-    from {{ ref('stg_nhatot_properties') }}
-),
-
-stats as (
-    select
-        snapshot_id,
-        min(crawl_timestamp) as snapshot_started_at,
-        max(crawl_timestamp) as snapshot_finished_at,
-        count(distinct case when not is_gone then listing_key end) as online_listing_count,
-        count(distinct case when is_valid_observation then listing_key end) as valid_listing_count,
-        count(distinct case when is_gone then listing_key end) as gone_listing_count
-    from observations
-    group by snapshot_id
+        snapshot_started_at,
+        snapshot_finished_at,
+        online_listing_count,
+        valid_listing_count,
+        gone_listing_count
+    from {{ ref('int_crawl_snapshot_stats') }}
 ),
 
 flagged as (

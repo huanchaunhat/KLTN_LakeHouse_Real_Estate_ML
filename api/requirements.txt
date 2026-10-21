@@ -6,13 +6,11 @@ pydantic-settings==2.10.1
 mlflow==3.3.2
 boto3==1.40.30
 
-numpy==2.2.6
-pandas==2.3.2
-scikit-learn==1.7.2
-joblib==1.5.2
-
-catboost==1.2.8
-xgboost==3.0.5
+# Must match the training environment (Airflow image, Python 3.9) so the
+# pickled sklearn pipeline loads unchanged.
+numpy==1.26.4
+pandas==2.1.4
+scikit-learn==1.6.1
 
 psycopg2-binary==2.9.10
 requests==2.32.5

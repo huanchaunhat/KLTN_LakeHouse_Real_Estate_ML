@@ -1,12 +1,15 @@
 {{ config(
-    materialized='table',
-    file_format='delta',
+    materialized='view',
     schema='silver'
 ) }}
 
 -- Gold-ready valid observations.
 -- Adds the business rules that Gold needs but Silver deliberately does not
 -- enforce: statistical outlier flags and snapshot completeness.
+--
+-- A view: it adds a few columns to the history from two small tables
+-- (broadcast joins). Materializing it rewrote a full copy of the history
+-- every day; as a view each Gold model reads only the columns it needs.
 
 with history as (
     select *

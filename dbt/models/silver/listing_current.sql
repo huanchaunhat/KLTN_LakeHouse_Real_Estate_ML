@@ -1,8 +1,17 @@
 {{ config(
-    materialized='table',
+    materialized='incremental',
     file_format='delta',
+    unique_key='listing_key',
+    incremental_strategy='merge',
+    on_schema_change='append_new_columns',
     schema='silver'
 ) }}
+
+-- Latest valid observation of each listing. Grain: one row per listing_key.
+--
+-- Incremental: only listings with rows (re)written in int_listing_changes since
+-- the last run are re-ranked. Those rows always include the listing's latest
+-- observation (a late run recomputes the whole listing there).
 
 with ranked as (
     select
@@ -16,6 +25,9 @@ with ranked as (
                 observation_id desc
         ) as current_rank
     from {{ ref('listing_history') }}
+    {% if is_incremental() %}
+    where {{ incremental_batch_predicate(ref('int_listing_changes'), 'changes_loaded_at') }}
+    {% endif %}
 )
 
 select
@@ -95,6 +107,7 @@ select
     listing_status,
     _source_file,
     _ingested_at,
-    transformed_at
+    transformed_at,
+    changes_loaded_at
 from ranked
 where current_rank = 1

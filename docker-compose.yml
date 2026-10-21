@@ -139,6 +139,9 @@ services:
     ports:
       - "4040:4040"
       - "10000:10000"
+    # Giữ cố định 1 executor (Superset không bao giờ chờ core), mượn thêm tối đa
+    # 2 executor khi dbt chạy. Crawler và dbt chạy nối tiếp trong DAG nên 3 core
+    # này chính là 3 core crawler dùng; executor rảnh 60s thì trả lại cluster.
     command: >
       sh -c "
       sleep 10 &&
@@ -147,13 +150,21 @@ services:
       --master spark://spark-master:7077
       --driver-cores 1
       --driver-memory 1g
-      --total-executor-cores 1
       --executor-cores 1
       --executor-memory 1g
-      --conf spark.dynamicAllocation.enabled=false
-      --conf spark.cores.max=1
-      --conf spark.sql.shuffle.partitions=8
-      --conf spark.default.parallelism=4
+      --conf spark.dynamicAllocation.enabled=true
+      --conf spark.dynamicAllocation.shuffleTracking.enabled=true
+      --conf spark.dynamicAllocation.minExecutors=1
+      --conf spark.dynamicAllocation.initialExecutors=1
+      --conf spark.dynamicAllocation.maxExecutors=3
+      --conf spark.dynamicAllocation.executorIdleTimeout=60s
+      --conf spark.dynamicAllocation.cachedExecutorIdleTimeout=300s
+      --conf spark.dynamicAllocation.shuffleTracking.timeout=300s
+      --conf spark.cores.max=3
+      --conf spark.sql.shuffle.partitions=12
+      --conf spark.default.parallelism=6
+      --conf spark.sql.adaptive.enabled=true
+      --conf spark.sql.adaptive.coalescePartitions.enabled=true
       "
     volumes:
       - ./spark/spark-defaults.conf:/opt/bitnami/spark/conf/spark-defaults.conf
@@ -215,15 +226,18 @@ services:
       - ./airflow/dags:/usr/local/airflow/dags
       - airflow_logs:/usr/local/airflow/logs
       - ./airflow/plugins:/usr/local/airflow/plugins
-      - ./airflow/config/airflow.cfg:/usr/local/airflow/config/airflow.cfg
+      - ./airflow/config/airflow.cfg:/usr/local/airflow/airflow.cfg
       - ./airflow/jars:/usr/local/airflow/jars
       - ./scripts:/usr/local/airflow/scripts
       - ./dbt:/opt/airflow/dbt
       - /var/run/docker.sock:/var/run/docker.sock
+      - ./airflow/script/entrypoint.sh:/entrypoint.sh:ro
     ports:
       - "8088:8088"
       - "8888:8888"
     command: webserver
+    # UI only: 2 gunicorn workers, no tasks run here.
+    mem_limit: 1g
     networks:
       - data_network
     healthcheck:
@@ -259,12 +273,16 @@ services:
       - ./airflow/dags:/usr/local/airflow/dags
       - airflow_logs:/usr/local/airflow/logs
       - ./airflow/plugins:/usr/local/airflow/plugins
-      - ./airflow/config/airflow.cfg:/usr/local/airflow/config/airflow.cfg
+      - ./airflow/config/airflow.cfg:/usr/local/airflow/airflow.cfg
       - ./airflow/jars:/usr/local/airflow/jars
       - ./scripts:/usr/local/airflow/scripts
       - ./dbt:/opt/airflow/dbt
       - /var/run/docker.sock:/var/run/docker.sock
+      - ./airflow/script/entrypoint.sh:/entrypoint.sh:ro
     command: scheduler
+    # Runs every task: one Spark driver (1 GB heap) or dbt at a time,
+    # since the DAG allows a single active run.
+    mem_limit: 3g
     networks:
       - data_network
 
@@ -323,6 +341,9 @@ services:
 
   kafka:
     image: bitnamilegacy/kafka:3.9.0
+    # Chưa có code nào dùng Kafka: không khởi động mặc định để tiết kiệm RAM.
+    # Bật bằng: docker compose --profile streaming up -d kafka
+    profiles: ["streaming"]
     restart: unless-stopped
     ports:
       - "${KAFKA_HOST_PORT:-9094}:9094"
@@ -402,6 +423,7 @@ services:
       --host 0.0.0.0
       --port 5000
       --workers ${MLFLOW_WORKERS:-1}
+      --allowed-hosts mlflow,mlflow:5000,localhost,localhost:${MLFLOW_HOST_PORT:-5001},127.0.0.1:${MLFLOW_HOST_PORT:-5001}
       --backend-store-uri postgresql://reip:reip123@postgres:5432/reip
       --default-artifact-root s3://mlflow/
       "

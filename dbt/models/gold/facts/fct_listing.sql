@@ -32,18 +32,13 @@ removals as (
     from {{ ref('int_listing_removals') }}
 ),
 
+-- The latest observation of each listing is already picked in Silver
+-- (same ordering), so a semi join replaces a sort of the whole history.
 latest as (
-    select *
-    from (
-        select
-            *,
-            row_number() over (
-                partition by listing_key
-                order by crawl_timestamp desc, snapshot_id desc, _ingested_at desc, observation_id desc
-            ) as latest_rank
-        from history
-    )
-    where latest_rank = 1
+    select h.*
+    from history h
+    left semi join {{ ref('listing_current') }} c
+        on h.observation_id = c.observation_id
 )
 
 select

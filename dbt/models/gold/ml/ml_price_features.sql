@@ -29,6 +29,10 @@ with eligible as (
     where f.transaction_type = 'sale'
       and f.is_price_training_eligible
       and not f.is_price_outlier
+      -- Location quality: see ml_* vars in dbt_project.yml.
+      and coalesce(o.ward_id, -1) not in ({{ var('ml_unreliable_ward_ids') | join(', ') }})
+      and not lower(concat_ws(' ', o.title, o.address_raw))
+          rlike '{{ var("ml_outside_legacy_hcmc_places") | join("|") }}'
 ),
 
 -- The same property is often advertised by several brokers. Copies share
@@ -125,3 +129,6 @@ inner join {{ ref('dim_property_type') }} pt
 inner join {{ ref('dim_legal_status') }} ls
     on f.legal_status_key = ls.legal_status_key
 where d.duplicate_rank = 1
+  -- "Sale" ads for offices / shop space mostly quote rent or a lease-transfer
+  -- fee (e.g. 150M VND for 75 m2 in District 1), not a property price.
+  and pt.property_category <> 'COMMERCIAL'

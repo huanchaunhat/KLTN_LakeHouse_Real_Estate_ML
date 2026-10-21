@@ -1,10 +1,20 @@
 {{ config(
-    partition_by=['snapshot_date_key']
+    materialized='incremental',
+    unique_key='observation_id',
+    incremental_strategy='merge',
+    partition_by=['snapshot_date_key'],
+    merge_partition_column='snapshot_date_key',
+    on_schema_change='append_new_columns'
 ) }}
 
 -- Periodic snapshot fact: the price of every listing at every crawl.
 -- Grain: one row per valid listing observation (listing x crawl snapshot).
 -- Source of the weekly/monthly price-trend marts.
+--
+-- Incremental: only observations (re)written in Silver since the last run are
+-- merged. is_price_outlier / outlier_reason are therefore point-in-time: they
+-- use the outlier bounds of the day the observation was loaded and do not
+-- move afterwards. dbt run --full-refresh recomputes them with today's bounds.
 
 select
     observation_id,
@@ -35,5 +45,9 @@ select
     coalesce(price_change_vnd < 0, false) as is_price_decrease,
     is_market_eligible,
     is_price_outlier,
-    outlier_reason
+    outlier_reason,
+    changes_loaded_at
 from {{ ref('int_listing_enriched') }}
+{% if is_incremental() %}
+where {{ incremental_batch_predicate(ref('int_listing_changes'), 'changes_loaded_at') }}
+{% endif %}

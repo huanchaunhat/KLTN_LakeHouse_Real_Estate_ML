@@ -69,10 +69,8 @@ case "$1" in
           --conn-port '7077' \
           --conn-extra '{"deploy-mode": "client"}'
 
-    if [ "$AIRFLOW__CORE__EXECUTOR" = "LocalExecutor" ] || [ "$AIRFLOW__CORE__EXECUTOR" = "SequentialExecutor" ]; then
-      # With the "Local" and "Sequential" executors, the scheduler should run in the same container.
-      airflow scheduler &
-    fi
+    # The scheduler runs in its own container (airflow-scheduler). Starting a
+    # second one here doubles the executor pool and runs tasks in both places.
 
     # Create the airflow admin user
     airflow users create \

@@ -44,6 +44,16 @@ models:
                 - UPDATED
                 - UNCHANGED
 
+      - name: last_seen_at
+        description: >
+          Last valid crawl of the listing as of the run that wrote this row
+          (incremental model): exact on the latest row of each listing.
+
+      - name: changes_loaded_at
+        description: When the row was (re)written; watermark of downstream incremental models.
+        tests:
+          - not_null
+
       - name: listing_status
         description: >
           Backward-compatible alias of change_type during Phase A migration.
@@ -90,6 +100,17 @@ models:
                 - NON_POSITIVE_AREA
                 - PRICE_PER_M2_OUT_OF_RANGE
                 - AREA_OUT_OF_RANGE
+
+  - name: int_crawl_snapshot_stats
+    description: >
+      Listing counts of each crawl run (incremental: only new runs are
+      recounted). Read by int_crawl_snapshots.
+
+    columns:
+      - name: snapshot_id
+        tests:
+          - unique
+          - not_null
 
   - name: int_crawl_snapshots
     description: >

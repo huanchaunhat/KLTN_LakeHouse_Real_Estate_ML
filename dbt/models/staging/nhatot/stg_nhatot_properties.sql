@@ -3,18 +3,25 @@
     file_format='delta',
     unique_key='observation_id',
     incremental_strategy='merge',
+    partition_by=['crawl_date'],
+    merge_partition_column='crawl_date',
+    on_schema_change='append_new_columns',
     schema='silver'
 ) }}
+
+-- Incremental: each run stages the Bronze rows loaded since the last run.
+-- A Bronze load commits all its rows with one _ingested_at, so a strict >
+-- never misses or repeats a load; a reloaded run gets a new _ingested_at and
+-- is staged again (MERGE on observation_id overwrites it).
+-- Only the Bronze partitions holding new rows are read (macros/incremental.sql),
+-- instead of decoding the whole Bronze payload every day.
 
 with source_data as (
     select *
     from {{ source('raw_lakehouse', 'raw_properties') }}
 
     {% if is_incremental() %}
-    where _ingested_at >= (
-        select coalesce(max(_ingested_at), cast('1970-01-01' as timestamp))
-        from {{ this }}
-    )
+    where {{ incremental_batch_predicate(source('raw_lakehouse', 'raw_properties'), '_ingested_at') }}
     {% endif %}
 ),
 

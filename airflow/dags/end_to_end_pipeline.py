@@ -2,15 +2,24 @@ import os
 from datetime import timedelta
 
 import pendulum
+import requests
+from airflow.datasets import Dataset
 from airflow.decorators import dag
 from airflow.operators.bash import BashOperator
-from airflow.operators.python import ShortCircuitOperator
+from airflow.operators.python import PythonOperator, ShortCircuitOperator
 from airflow.providers.apache.spark.operators.spark_submit import SparkSubmitOperator
 
 DBT_PROJECT_DIR = "/opt/airflow/dbt"
 VN_TZ = "Asia/Ho_Chi_Minh"
 # Delta OPTIMIZE/VACUUM runs once a week (ISO weekday, 7 = Sunday).
 MAINTENANCE_WEEKDAY = 7
+# The price model retrains once a week (Monday), or whenever triggered by hand.
+TRAINING_WEEKDAY = 1
+
+# Emitted when Gold passed its tests; schedules the training DAG.
+ML_FEATURES_DATASET = Dataset("lakehouse://gold/ml_price_features")
+MLFLOW_TRACKING_URI = os.getenv("MLFLOW_TRACKING_URI", "http://mlflow:5000")
+PRICE_API_URL = os.getenv("PRICE_API_URL", "http://fastapi:8000")
 
 # Không dùng --packages: Ivy tải lại aws-java-sdk-bundle (~280MB) từ Maven mỗi lần
 # và hay đứt giữa chừng. Driver (client mode, chạy trong Airflow) đọc jar local;
@@ -101,12 +110,27 @@ def is_maintenance_day(data_interval_end, **_):
     return pendulum.instance(data_interval_end).in_timezone(VN_TZ).isoweekday() == MAINTENANCE_WEEKDAY
 
 
+def is_training_day(dag_run, logical_date, **_):
+    if dag_run.run_type == "manual":
+        return True
+    return pendulum.instance(logical_date).in_timezone(VN_TZ).isoweekday() == TRAINING_WEEKDAY
+
+
+def reload_price_api(**_):
+    # The API keeps serving its current model if the gate did not promote a new one.
+    response = requests.post(f"{PRICE_API_URL}/model/reload", timeout=120)
+    response.raise_for_status()
+    print(response.json())
+
+
 @dag(
     dag_id="end_to_end_lakehouse_pipeline",
     description="Nha Tot: crawl IDs -> crawl profiles -> Bronze -> Silver",
     schedule="@daily",
     start_date=pendulum.datetime(2025, 10, 10, tz=VN_TZ),
     catchup=False,
+    # Runs share the same Landing/Bronze partitions and the 4-core cluster.
+    max_active_runs=1,
     default_args={
         "owner": "airflow",
         "retries": 1,
@@ -222,6 +246,7 @@ set -e
 cd {DBT_PROJECT_DIR}
 dbt test {GOLD_SELECT} {DBT_ARGS}
 """,
+        outlets=[ML_FEATURES_DATASET],
     )
 
     maintenance_day = ShortCircuitOperator(
@@ -253,3 +278,61 @@ dbt run-operation delta_maintenance {DBT_ARGS}
 
 
 reip_pipeline()
+
+
+TRAIN_CONF = {
+    **BRONZE_CONF,
+    "spark.sql.shuffle.partitions": "4",
+}
+
+
+@dag(
+    dag_id="train_price_model",
+    description="gold.ml_price_features -> MLflow price_model (+ gate) -> gold.ml_price_predictions -> API",
+    schedule=[ML_FEATURES_DATASET],
+    start_date=pendulum.datetime(2026, 10, 1, tz=VN_TZ),
+    catchup=False,
+    max_active_runs=1,
+    default_args={
+        "owner": "airflow",
+        "retries": 1,
+        "retry_delay": timedelta(minutes=5),
+    },
+    user_defined_macros={"vn_run_id": vn_run_id},
+    tags=["reip", "ml"],
+)
+def train_price_model():
+    training_day = ShortCircuitOperator(
+        task_id="is_training_day",
+        python_callable=is_training_day,
+    )
+
+    # Training runs in the Spark driver (client mode, this container): Spark reads
+    # the Gold table by name and writes predictions back; sklearn fits ~30k rows.
+    train = SparkSubmitOperator(
+        task_id="train_price_model",
+        application="/usr/local/airflow/scripts/train_price_model.py",
+        conn_id="spark_default",
+        conf=TRAIN_CONF,
+        driver_memory="1024m",
+        executor_memory="1024m",
+        executor_cores=1,
+        total_executor_cores=1,
+        env_vars={
+            "MLFLOW_TRACKING_URI": MLFLOW_TRACKING_URI,
+            "MLFLOW_S3_ENDPOINT_URL": MINIO_ENDPOINT,
+            "AWS_ACCESS_KEY_ID": MINIO_ACCESS_KEY,
+            "AWS_SECRET_ACCESS_KEY": MINIO_SECRET_KEY,
+        },
+        application_args=["--run-id", "{{ vn_run_id(dag_run.logical_date) }}"],
+    )
+
+    reload_api = PythonOperator(
+        task_id="reload_price_api",
+        python_callable=reload_price_api,
+    )
+
+    training_day >> train >> reload_api
+
+
+train_price_model()

@@ -11,9 +11,11 @@ with types as (
 
 select
     {{ property_type_key('property_type', 'property_subtype') }} as property_type_key,
-    coalesce(property_type, 'Không rõ') as property_type,
-    coalesce(property_subtype, property_type, 'Không rõ') as property_subtype,
-    case property_type
+    coalesce(trim(property_type), 'Không rõ') as property_type,
+    coalesce(property_subtype, trim(property_type), 'Không rõ') as property_subtype,
+    -- The source pads some category names (' Văn phòng, Mặt bằng kinh doanh ').
+    -- The key keeps the raw value so it still matches the facts.
+    case trim(property_type)
         when 'Nhà ở' then 'HOUSE'
         when 'Căn hộ/Chung cư' then 'APARTMENT'
         when 'Đất' then 'LAND'
@@ -21,5 +23,5 @@ select
         when 'Văn phòng, Mặt bằng kinh doanh' then 'COMMERCIAL'
         else 'OTHER'
     end as property_category,
-    property_type in ('Nhà ở', 'Căn hộ/Chung cư', 'Phòng trọ') as is_residential
+    trim(property_type) in ('Nhà ở', 'Căn hộ/Chung cư', 'Phòng trọ') as is_residential
 from types

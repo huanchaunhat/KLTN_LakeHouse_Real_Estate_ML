@@ -20,6 +20,31 @@ vars:
   outlier_upper_quantile: 0.99
   # Minimum listings in a trend cell for its median to be flagged reliable.
   trend_min_sample: 10
+  # ml_price_features: listings whose location cannot be trusted.
+  # Ward 11221 ("Phường An Khánh (Quận 2 cũ)") is where the source files ads
+  # whose post-2025 ward it cannot map: it mixes An Khánh with former District 9
+  # and former Binh Duong listings, all on ~25 distinct coordinates.
+  ml_unreliable_ward_ids: [11221]
+  # Places of former Binh Duong / Ba Ria-Vung Tau (merged into HCMC in 2025).
+  # The source files such ads under a legacy HCMC district, so a mention in the
+  # title or address means the district, ward and coordinates are wrong.
+  ml_outside_legacy_hcmc_places:
+    - "bình dương"
+    - "bàu bàng"
+    - "tân uyên"
+    - "thủ dầu một"
+    - "dĩ an"
+    - "thuận an"
+    - "bến cát"
+    - "phú giáo"
+    - "dầu tiếng"
+    - "vũng tàu"
+    - "bà rịa"
+    - "long hải"
+    - "xuyên mộc"
+    - "côn đảo"
+    - "long điền"
+    - "đất đỏ"
   # Range of the generated calendar dimension.
   date_spine_start: "2024-01-01"
   date_spine_end: "2030-12-31"
