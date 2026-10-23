@@ -12,6 +12,10 @@
 -- Incremental: only listings with rows (re)written in int_listing_changes since
 -- the last run are re-ranked. Those rows always include the listing's latest
 -- observation (a late run recomputes the whole listing there).
+--
+-- int_listing_changes is only ref()'d inside the is_incremental() branch below,
+-- so dbt cannot infer the dependency statically.
+-- depends_on: {{ ref('int_listing_changes') }}
 
 with ranked as (
     select

@@ -15,6 +15,10 @@
 -- merged. is_price_outlier / outlier_reason are therefore point-in-time: they
 -- use the outlier bounds of the day the observation was loaded and do not
 -- move afterwards. dbt run --full-refresh recomputes them with today's bounds.
+--
+-- int_listing_changes is only ref()'d inside the is_incremental() branch below,
+-- so dbt cannot infer the dependency statically.
+-- depends_on: {{ ref('int_listing_changes') }}
 
 select
     observation_id,
