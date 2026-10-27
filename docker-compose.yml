@@ -452,6 +452,59 @@ services:
     networks:
       - data_network
 
+  recommendation-api:
+    image: ${REIP_RECOMMENDATION_IMAGE:-kltn-fastapi}
+    restart: unless-stopped
+    init: true
+    working_dir: /workspace
+    command: uvicorn api.app.recommendation.main:app --host 0.0.0.0 --port 8000 --workers 1
+    ports:
+      - "127.0.0.1:${RECOMMENDATION_PORT:-8501}:8000"
+    environment: &recommendation_environment
+      PYTHONPATH: /workspace
+      PYTHONDONTWRITEBYTECODE: "1"
+      OPENBLAS_NUM_THREADS: "1"
+      OMP_NUM_THREADS: "1"
+      MLFLOW_TRACKING_URI: http://mlflow:5000
+      MLFLOW_S3_ENDPOINT_URL: http://minio:9000
+      AWS_ACCESS_KEY_ID: ${MINIO_ACCESS_KEY}
+      AWS_SECRET_ACCESS_KEY: ${MINIO_SECRET_KEY}
+      REIP_STATE: /state
+      REIP_ADMIN_TOKEN_FILE: /state/admin_token
+      REIP_API_URL: http://recommendation-api:8000
+    volumes:
+      - ./api:/workspace/api:ro
+      - ./web:/workspace/web:ro
+      - ./recommendation:/workspace/recommendation:ro
+      - ./artifacts/recommendation/production:/state
+    mem_limit: 3g
+    cpus: 2
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=5)"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 120s
+    networks:
+      - data_network
+
+  recommendation-worker:
+    image: ${REIP_RECOMMENDATION_IMAGE:-kltn-fastapi}
+    restart: unless-stopped
+    init: true
+    working_dir: /workspace
+    command: uvicorn api.app.recommendation.worker:app --host 0.0.0.0 --port 8010 --workers 1
+    environment: *recommendation_environment
+    volumes:
+      - ./api:/workspace/api:ro
+      - ./recommendation:/workspace/recommendation:ro
+      - ./artifacts/recommendation/production:/state
+      - ./artifacts/recommendation/models/20261023_v1:/bootstrap:ro
+    mem_limit: 3g
+    cpus: 2
+    networks:
+      - data_network
+
 networks:
   data_network:
     driver: bridge

@@ -1,0 +1,30 @@
+version: 2
+models:
+  - name: ml_recommendation_features
+    description: >
+      Current listing features for separate sale/rent recommenders. Ineligible
+      rows remain for audit; is_recommendable and serving-time freshness are mandatory.
+    columns:
+      - name: listing_key
+        tests: [not_null, unique]
+      - name: transaction_type
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['sale', 'rent']
+      - name: price_period
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['total', 'month', 'day', 'year', 'unknown']
+      - name: property_category
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['HOUSE', 'APARTMENT', 'LAND', 'ROOM', 'COMMERCIAL', 'OTHER']
+      - name: is_recommendable
+        tests: [not_null]
+      - name: feature_built_at
+        tests: [not_null]
+      - name: duplicate_group
+        tests: [not_null]

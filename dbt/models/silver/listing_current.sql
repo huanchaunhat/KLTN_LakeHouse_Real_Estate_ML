@@ -1,3 +1,5 @@
+-- depends_on: {{ ref('int_listing_changes') }}
+
 {{ config(
     materialized='incremental',
     file_format='delta',

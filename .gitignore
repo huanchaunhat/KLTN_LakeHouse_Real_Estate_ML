@@ -156,6 +156,7 @@ superset/*.db-shm
 superset/*.db-wal
 
 .DS_Store
+artifacts/recommendation/production/
 .vscode/    
 # jar lớn (>100MB), chép từ image Spark: docker cp kltn-spark-master-1:/opt/bitnami/spark/jars/aws-java-sdk-bundle-1.12.262.jar airflow/jars/
 airflow/jars/aws-java-sdk-bundle-*.jar

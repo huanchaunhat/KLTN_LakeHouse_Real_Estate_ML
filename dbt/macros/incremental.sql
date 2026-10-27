@@ -12,9 +12,24 @@
 {#- SQL literal of max(column) in the current model, or of `default` on an empty table. -#}
 {% macro incremental_watermark(column, default='1970-01-01 00:00:00') %}
     {%- if not execute -%}{{ return("timestamp'" ~ default ~ "'") }}{%- endif -%}
+    {# Older tables may predate the watermark column. Replay the source once;
+       append_new_columns adds the watermark when the incremental merge runs. #}
+    {%- set existing_columns = adapter.get_columns_in_relation(this) | map(attribute='name') | map('lower') | list -%}
+    {%- if column | lower not in existing_columns -%}
+        {{ return("timestamp'" ~ default ~ "'") }}
+    {%- endif -%}
     {%- set result = run_query('select cast(max(' ~ column ~ ') as string) from ' ~ this) -%}
     {%- set value = result.columns[0].values()[0] -%}
     {{ return("timestamp'" ~ (value if value is not none else default) ~ "'") }}
+{% endmacro %}
+
+{# One-time migration for history written before changes_loaded_at existed.
+   Only missing load timestamps are filled; listing values and ordering stay intact. #}
+{% macro backfill_legacy_change_watermarks() %}
+    {% if not execute %}{{ return(none) }}{% endif %}
+    {% set relation = ref('int_listing_changes') %}
+    {% do run_query('update ' ~ relation ~ ' set changes_loaded_at = current_timestamp() where changes_loaded_at is null') %}
+    {% do log('Backfilled missing changes_loaded_at in ' ~ relation, info=true) %}
 {% endmacro %}
 
 {#-

@@ -168,3 +168,32 @@ dbt test --select path:models/gold
 ```
 
 Khi thêm cột mới vào `stg_nhatot_properties` (incremental), cần chạy một lần với `--full-refresh`.
+
+Khi nâng cấp từ Silver cũ sang phiên bản dùng `changes_loaded_at`, các dòng
+lịch sử có sẵn có thể vẫn NULL ở cột mới dù `append_new_columns` đã thêm cột.
+Sau khi lần `dbt run` đầu đã thêm cột mới, chạy một lần trong container Airflow
+để điền timestamp nạp cho các dòng cũ, cập nhật trạng thái hiện tại và test Silver.
+Macro chỉ cập nhật timestamp còn NULL, giữ nguyên dữ liệu và thứ tự lịch sử;
+không cần full-refresh toàn bộ lịch sử trên máy ít RAM:
+
+```bash
+cd /opt/airflow/dbt
+dbt run-operation backfill_legacy_change_watermarks --profiles-dir .
+dbt run --select listing_current int_listing_enriched --profiles-dir .
+dbt test --select stg_nhatot_properties+ --exclude path:models/gold+ --indirect-selection cautious --profiles-dir .
+```
+
+Sau khi test đạt, clear task bị lỗi cùng downstream của đúng DAG run để tiếp
+tục sang Gold. Các lần chạy tiếp theo dùng incremental bình thường.
+
+Nếu `not_null_fct_listing_posted_date_key` lỗi trên dữ liệu cũ còn NULL ở
+`posted_at`, dù Bronze có `list_time`, backfill theo cùng quy tắc
+`coalesce(orig_list_time, list_time)` của staging. Macro chỉ điền ngày còn thiếu,
+giữ nguyên ngày đã có và observation đang được chọn ở `listing_current`:
+
+```bash
+cd /opt/airflow/dbt
+dbt run-operation backfill_legacy_posted_at --profiles-dir .
+dbt run --select fct_listing fct_listing_event agg_market_supply_weekly ml_price_features --profiles-dir .
+dbt test --select path:models/gold --profiles-dir .
+```

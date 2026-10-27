@@ -18,6 +18,7 @@ TRAINING_WEEKDAY = 1
 
 # Emitted when Gold passed its tests; schedules the training DAG.
 ML_FEATURES_DATASET = Dataset("lakehouse://gold/ml_price_features")
+RECOMMENDATION_DATASET = Dataset("lakehouse://gold/ml_recommendation_features")
 MLFLOW_TRACKING_URI = os.getenv("MLFLOW_TRACKING_URI", "http://mlflow:5000")
 PRICE_API_URL = os.getenv("PRICE_API_URL", "http://fastapi:8000")
 
@@ -246,7 +247,7 @@ set -e
 cd {DBT_PROJECT_DIR}
 dbt test {GOLD_SELECT} {DBT_ARGS}
 """,
-        outlets=[ML_FEATURES_DATASET],
+        outlets=[ML_FEATURES_DATASET, RECOMMENDATION_DATASET],
     )
 
     maintenance_day = ShortCircuitOperator(
