@@ -27,12 +27,14 @@ from mlflow.exceptions import MlflowException
 from mlflow.tracking import MlflowClient
 from pyspark.sql import SparkSession
 from pyspark.sql import functions as F
+from sklearn.base import clone
 from sklearn.compose import ColumnTransformer
-from sklearn.ensemble import HistGradientBoostingRegressor
 from sklearn.impute import SimpleImputer
 from sklearn.metrics import mean_absolute_error, r2_score
+from sklearn.model_selection import train_test_split
 from sklearn.pipeline import Pipeline, make_pipeline
 from sklearn.preprocessing import OrdinalEncoder, TargetEncoder
+from xgboost import XGBRegressor
 
 FEATURE_TABLE = "gold.ml_price_features"
 PREDICTION_TABLE = "gold.ml_price_predictions"
@@ -183,6 +185,11 @@ def parse_args():
         "--max-mape-regression", type=float, default=0.0,
         help="Promote if MAPE <= champion MAPE * (1 + this)",
     )
+    parser.add_argument(
+        "--random-test-size", type=float, default=0.3,
+        help="Also score every candidate on a random split of this size, "
+             "for comparison only; 0 skips it",
+    )
     return parser.parse_args()
 
 
@@ -277,46 +284,58 @@ def prepare(df, label=None):
     return out[FEATURES]
 
 
-def build_pipeline(max_iter=2000, early_stopping=True):
+def _high_card_encoder():
+    return make_pipeline(
+        SimpleImputer(strategy="constant", fill_value=MISSING),
+        TargetEncoder(target_type="continuous", random_state=42),
+    )
+
+
+def _tree_preprocessor():
+    """Shared by the tree models: they split on NaN and on ordinal codes as is."""
     low_card = make_pipeline(
         OrdinalEncoder(
             handle_unknown="use_encoded_value", unknown_value=np.nan,
             dtype=np.float64,
         ),
     )
-    high_card = make_pipeline(
-        SimpleImputer(strategy="constant", fill_value=MISSING),
-        TargetEncoder(target_type="continuous", random_state=42),
-    )
-    prep = ColumnTransformer(
+    return ColumnTransformer(
         [
             ("num", "passthrough", NUMERIC + BOOLEAN),
             ("low", low_card, LOW_CARD),
-            ("high", high_card, HIGH_CARD),
+            ("high", _high_card_encoder(), HIGH_CARD),
         ],
         verbose_feature_names_out=False,
     ).set_output(transform="pandas")
-    log("ColumnTransformer, 3 branches:")
-    log("  'num'  passthrough           -> {} cols (HGB splits on NaN natively)".format(
-        len(NUMERIC + BOOLEAN)))
-    log("  'low'  OrdinalEncoder        -> {} cols (native categorical splits)".format(
-        len(LOW_CARD)))
-    log("  'high' Imputer+TargetEncoder -> {} cols (too many levels for native "
-        "splits, cross-fitted so a row's own price never leaks)".format(len(HIGH_CARD)))
-    model = HistGradientBoostingRegressor(
-        loss="squared_error",
-        learning_rate=0.05,
-        max_iter=max_iter,
-        max_leaf_nodes=63,
-        min_samples_leaf=20,
-        l2_regularization=1.0,
-        categorical_features=LOW_CARD,
-        early_stopping=early_stopping,
-        validation_fraction=0.1,
-        n_iter_no_change=50,
-        random_state=42,
-    )
-    return Pipeline([("prep", prep), ("model", model)])
+
+
+def build_candidates():
+    """The model trained on every run. The comparison of algorithms (Ridge,
+    RandomForest, HistGBM, XGBoost, CatBoost) lives in
+    notebooks/price_model_comparison.ipynb; XGBoost won it (19.84% MAPE), so
+    production trains only that one. Kept as a dict so the evaluation and
+    model_comparison.csv need no change if a candidate is added back."""
+    log("model 'xgboost': ordinal + target encoding -> XGBRegressor "
+        "(boosting with regularised leaves and row/column sampling)")
+    log("high-card columns {} use a cross-fitted TargetEncoder, so a row's "
+        "own price never leaks".format(HIGH_CARD))
+    return {
+        "xgboost": Pipeline([
+            ("prep", _tree_preprocessor()),
+            ("model", XGBRegressor(
+                n_estimators=800,
+                learning_rate=0.05,
+                max_depth=7,
+                min_child_weight=5,
+                subsample=0.8,
+                colsample_bytree=0.7,
+                reg_lambda=1.0,
+                tree_method="hist",
+                n_jobs=2,
+                random_state=42,
+            )),
+        ]),
+    }
 
 
 def log_fitted_preprocessor(pipeline, x_train):
@@ -329,14 +348,14 @@ def log_fitted_preprocessor(pipeline, x_train):
     prep = pipeline.named_steps["prep"]
     fitted = dict(zip([name for name, _, _ in prep.transformers], prep.transformers_))
 
-    ordinal = fitted["low"][1].named_steps["ordinalencoder"]
+    low = fitted["low"][1]
+    low = low[-1] if isinstance(low, Pipeline) else low
     rows = [
         {"column": column, "levels": len(categories)}
-        for column, categories in zip(LOW_CARD, ordinal.categories_)
+        for column, categories in zip(LOW_CARD, low.categories_)
     ]
     log_block(
-        "OrdinalEncoder learned these level counts (each becomes a native "
-        "categorical split in the trees)",
+        "{} learned these level counts".format(type(low).__name__),
         pd.DataFrame(rows).to_string(index=False))
 
     encoder = fitted["high"][1].named_steps["targetencoder"]
@@ -364,7 +383,7 @@ def log_fitted_preprocessor(pipeline, x_train):
     transformed = prep.transform(sample)
     log_change("encoded: category text -> number", sample, transformed,
                ["property_type", "house_direction", "ward_id", "street"])
-    log("preprocessor output: {} columns fed to the trees".format(transformed.shape[1]))
+    log("preprocessor output: {} columns fed to the model".format(transformed.shape[1]))
 
 
 def baseline_predict(train, test):
@@ -414,6 +433,35 @@ def segment_report(test, predicted):
     )
 
 
+def add_random_split_scores(comparison, candidates, df, test_size):
+    """Refit fresh copies of every candidate on a random split and add its MAPE.
+
+    For the report only: nothing here is registered or gated. A random split
+    lets reposts of the same property and listings posted the same week sit
+    on both sides, so its MAPE is expected to be lower than the time split's;
+    the gap measures how optimistic a random split would have been.
+    """
+    rand_train, rand_test = train_test_split(df, test_size=test_size, random_state=42)
+    log("-" * 60)
+    log("random split for comparison: {:,} train / {:,} test ({:.0%} test, "
+        "random_state=42)".format(len(rand_train), len(rand_test), test_size))
+    x_train = prepare(rand_train)
+    x_test = prepare(rand_test)
+    y_train = rand_train[TARGET].astype(float)
+    random_mape = {}
+    for name, candidate in candidates.items():
+        fresh = clone(candidate)
+        fresh.fit(x_train, y_train)
+        scored = metrics(rand_test["price_vnd"], np.exp(fresh.predict(x_test)),
+                         name + "_random")
+        mlflow.log_metrics(scored)
+        random_mape[name] = scored[name + "_random_mape"]
+        log("'{}' random-split MAPE {:.4f}".format(name, random_mape[name]))
+    out = comparison.assign(random_mape=comparison["model"].map(random_mape))
+    out["optimism"] = out["test_mape"] - out["random_mape"]
+    return out
+
+
 def champion_mape(client, x_test, y_test):
     """MAPE of the current champion on today's holdout, or None if there is none."""
     try:
@@ -426,6 +474,40 @@ def champion_mape(client, x_test, y_test):
     log("scoring the champion on the same {:,} holdout rows".format(len(x_test)))
     predicted = np.exp(model.predict(x_test))
     return metrics(y_test, predicted, "champion")["champion_mape"], version.version
+
+
+def form_options(train):
+    """What the web form may offer: only values the model was trained on.
+
+    Wards carry the median coordinates of their training listings, so the form
+    can send a plausible latitude/longitude without asking the user for one.
+    """
+    subtypes = {
+        str(t): sorted(g.dropna().astype(str).unique().tolist())
+        for t, g in train.groupby("property_type")["property_subtype"]
+    }
+    wards = (
+        train.dropna(subset=["ward_id"])
+        .groupby(["district_id", "ward_id"])
+        .agg(ward=("ward", "first"), latitude=("latitude", "median"),
+             longitude=("longitude", "median"), listings=("listing_key", "size"))
+        .reset_index()
+        .sort_values(["district_id", "ward"])
+    )
+    by_district = {}
+    for row in wards.itertuples(index=False):
+        by_district.setdefault(str(row.district_id), []).append({
+            "ward_id": str(row.ward_id),
+            "ward": None if pd.isna(row.ward) else str(row.ward),
+            "latitude": None if pd.isna(row.latitude) else round(float(row.latitude), 6),
+            "longitude": None if pd.isna(row.longitude) else round(float(row.longitude), 6),
+            "listings": int(row.listings),
+        })
+    # Not every candidate has an encoder the API could read these back from.
+    levels = {
+        c: sorted(train[c].dropna().astype(str).unique().tolist()) for c in LOW_CARD
+    }
+    return {"subtypes": subtypes, "wards": by_district, "levels": levels}
 
 
 PREDICTION_SCHEMA = (
@@ -511,6 +593,9 @@ def main():
             args.min_train_rows, args.min_test_rows))
         raise SystemExit("Not enough rows: train={}, test={}".format(len(train), len(test)))
     log("row-count check passed")
+    log("test share = {:.1%} of all rows (the time split has no fixed ratio: "
+        "it holds out whatever was posted in the last {} days)".format(
+            len(test) / len(df), args.test_days))
 
     log_step(4, "PREPROCESS", "cast features to the dtypes the pipeline expects")
     log("the API applies this very same function (logged as feature_spec.json), "
@@ -543,32 +628,54 @@ def main():
             "test_posted_to": str(test["posted_date"].max().date()),
         })
 
-        log_step(5, "TRAIN", "build the pipeline and fit it on {:,} rows".format(len(x_train)))
-        log("assembling the preprocessing + model pipeline")
-        pipeline = build_pipeline()
-        log("HistGradientBoostingRegressor hyperparameters:")
-        params = pipeline.named_steps["model"].get_params()
-        for key in ["loss", "learning_rate", "max_iter", "max_leaf_nodes",
-                    "min_samples_leaf", "l2_regularization", "early_stopping",
-                    "validation_fraction", "n_iter_no_change", "random_state"]:
-            log("    {:<20} = {}".format(key, params[key]))
-        log("fitting now: the TargetEncoder is cross-fitted first, then the "
-            "trees are boosted; this is the slow part")
-        fit_started = time.time()
-        pipeline.fit(x_train, y_train)
-        hgb = pipeline.named_steps["model"]
-        log("fitted in {:.1f}s".format(time.time() - fit_started))
-        log("built {} of max {} trees, then early stopping kicked in".format(
-            hgb.n_iter_, hgb.max_iter))
-        log_fitted_preprocessor(pipeline, x_train)
-        mlflow.log_params({
-            k: v for k, v in hgb.get_params().items()
-            if k in {"learning_rate", "max_leaf_nodes", "min_samples_leaf",
-                     "l2_regularization", "max_iter"}
-        })
-        mlflow.log_param("n_iter", hgb.n_iter_)
+        log_step(5, "TRAIN", "fit every candidate on the same {:,} rows".format(len(x_train)))
+        candidates = build_candidates()
+        fit_seconds = {}
+        for name, candidate in candidates.items():
+            log("-" * 60)
+            log("fitting '{}' ({})".format(
+                name, type(candidate.named_steps["model"]).__name__))
+            fit_started = time.time()
+            candidate.fit(x_train, y_train)
+            fit_seconds[name] = time.time() - fit_started
+            log("'{}' fitted in {:.1f}s".format(name, fit_seconds[name]))
 
-        log_step(6, "EVALUATE", "score the holdout, the baseline and the champion")
+        log_step(6, "EVALUATE", "compare the model, the baseline and the champion")
+        # Every candidate sees the same out-of-time holdout; the lowest MAPE
+        # becomes the run's model (trivially, while there is only one).
+        comparison = []
+        for name, candidate in candidates.items():
+            scored = metrics(test["price_vnd"], np.exp(candidate.predict(x_test)), name)
+            scored.update(metrics(
+                train["price_vnd"], np.exp(candidate.predict(x_train)), name + "_train"))
+            mlflow.log_metrics(scored)
+            mlflow.log_metric(name + "_fit_seconds", fit_seconds[name])
+            comparison.append({
+                "model": name,
+                "test_mape": scored[name + "_mape"],
+                "test_mdape": scored[name + "_mdape"],
+                "test_r2_log": scored[name + "_r2_log"],
+                "test_within_20pct": scored[name + "_within_20pct"],
+                "train_mape": scored[name + "_train_mape"],
+                "fit_seconds": round(fit_seconds[name], 1),
+            })
+        comparison = pd.DataFrame(comparison).sort_values("test_mape")
+        if args.random_test_size > 0:
+            comparison = add_random_split_scores(
+                comparison, candidates, df, args.random_test_size)
+        log_block("candidates on the holdout, best first (train_mape far below "
+                  "test_mape means overfitting)",
+                  comparison.round(4).to_string(index=False))
+        best = comparison.iloc[0]["model"]
+        pipeline = candidates[best]
+        log("WINNER: '{}' goes on to the gate against the champion".format(best))
+        mlflow.set_tag("algorithm", best)
+        mlflow.log_params({
+            "model__" + k: v for k, v in pipeline.named_steps["model"].get_params().items()
+            if isinstance(v, (int, float, str, bool))
+        })
+        log_fitted_preprocessor(pipeline, x_train)
+
         raw_pred = pipeline.predict(x_test)
         test_pred = np.exp(raw_pred)
         log_change(
@@ -620,9 +727,18 @@ def main():
                               orient="records", force_ascii=False, indent=2)
             log("districts.json            - {} districts; lets the API fill "
                 "district/area_zone from district_id alone".format(len(districts)))
+            options = form_options(train)
+            with open(os.path.join(tmp, "form_options.json"), "w", encoding="utf-8") as f:
+                json.dump(options, f, ensure_ascii=False, indent=2)
+            log("form_options.json         - subtypes per property_type and "
+                "{} wards with median coordinates, for the web form".format(
+                    sum(len(w) for w in options["wards"].values())))
             segments.to_csv(
                 os.path.join(tmp, "test_by_property_type.csv"), index=False)
             log("test_by_property_type.csv - {} segments".format(len(segments)))
+            comparison.to_csv(os.path.join(tmp, "model_comparison.csv"), index=False)
+            log("model_comparison.csv      - {} candidates, the table for the "
+                "report".format(len(comparison)))
             mlflow.log_artifacts(tmp)
         log("artifacts uploaded to the MinIO bucket behind MLflow")
 
@@ -683,6 +799,7 @@ def main():
     log_step(9, "DONE", "run finished")
     summary = {
         "model_version": new_version,
+        "algorithm": best,
         "gate": reason,
         "champion_version_before": champ_version,
         "feature_table_delta_version": data_version,

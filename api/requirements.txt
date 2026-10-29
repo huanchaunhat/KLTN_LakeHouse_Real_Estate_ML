@@ -11,6 +11,8 @@ boto3==1.40.30
 numpy==1.26.4
 pandas==2.1.4
 scikit-learn==1.6.1
+# The registered model is an XGBoost pipeline.
+xgboost-cpu==2.1.4
 
 psycopg2-binary==2.9.10
 requests==2.32.5
