@@ -472,6 +472,7 @@ services:
       REIP_STATE: /state
       REIP_ADMIN_TOKEN_FILE: /state/admin_token
       REIP_API_URL: http://recommendation-api:8000
+      PRICE_API_URL: http://fastapi:8000
     volumes:
       - ./api:/workspace/api:ro
       - ./web:/workspace/web:ro

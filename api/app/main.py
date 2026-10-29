@@ -13,11 +13,13 @@ import mlflow
 import numpy as np
 import pandas as pd
 from fastapi import FastAPI, HTTPException
+from fastapi.responses import FileResponse
 from mlflow.tracking import MlflowClient
 from pydantic import BaseModel, Field
 
 MODEL_NAME = os.getenv("MODEL_NAME", "price_model")
 MODEL_ALIAS = os.getenv("MODEL_ALIAS", "champion")
+WEB_PAGE = os.path.join(os.path.dirname(__file__), "static", "index.html")
 
 app = FastAPI(title="Real estate price API")
 _lock = Lock()
@@ -70,15 +72,50 @@ def load_champion():
         spec = json.load(f)
     with open(os.path.join(artifacts, "districts.json"), encoding="utf-8") as f:
         districts = {str(d["district_id"]): d for d in json.load(f)}
+    # Written by training runs since the model comparison; older versions lack it.
+    form_path = os.path.join(artifacts, "form_options.json")
+    form = {}
+    if os.path.exists(form_path):
+        with open(form_path, encoding="utf-8") as f:
+            form = json.load(f)
     run = client.get_run(version.run_id)
     return {
         "model": model,
         "spec": spec,
         "districts": districts,
+        "options": build_options(model, spec, districts, form),
         "version": version.version,
         "run_id": version.run_id,
         "metrics": {k: v for k, v in run.data.metrics.items() if k.startswith("test_")},
         "trained_on": run.data.tags.get("feature_table_delta_version"),
+    }
+
+
+def build_options(model, spec, districts, form):
+    """Every value the web form may offer, read from what the model was fitted on."""
+    # Logged by training since the boosting candidates; older runs only have
+    # them in the fitted encoder (CatBoost pipelines have no "prep" step).
+    levels = dict(form.get("levels") or {})
+    if not levels and "prep" in model.named_steps:
+        for name, transformer, columns in model.named_steps["prep"].transformers_:
+            if name != "low":
+                continue
+            encoder = transformer[-1] if hasattr(transformer, "steps") else transformer
+            for column, categories in zip(columns, encoder.categories_):
+                levels[column] = [str(c) for c in categories if c != spec["missing_token"]]
+    return {
+        "districts": [
+            {"district_id": d["district_id"], "district": d["district"]}
+            for d in districts.values()
+        ],
+        "property_types": levels.get("property_type", []),
+        # Grouped by property_type when the run logged form_options.json.
+        "subtypes": form.get("subtypes") or {"*": levels.get("property_subtype", [])},
+        "wards": form.get("wards", {}),
+        "house_directions": levels.get("house_direction", []),
+        "furnishings": levels.get("furnishing", []),
+        "handover_statuses": levels.get("handover_status", []),
+        "legal_categories": levels.get("legal_category", []),
     }
 
 
@@ -90,6 +127,9 @@ def to_frame(item: PropertyInput, spec, districts):
     row["district_type"] = district["district_type"]
     row["area_zone"] = district["area_zone"]
     row["is_in_project"] = item.project_name is not None
+    # Training derives it from the legal status (dim_legal_status).
+    if item.has_certificate is None and item.legal_category is not None:
+        row["has_certificate"] = item.legal_category == "Có sổ"
 
     frame = pd.DataFrame([row])
     for c in spec["numeric"]:
@@ -126,6 +166,18 @@ def model_info():
         "feature_table_delta_version": _state["trained_on"],
         "test_metrics": _state["metrics"],
     }
+
+
+@app.get("/options")
+def options():
+    if "model" not in _state:
+        raise HTTPException(503, _state.get("error", "No model loaded"))
+    return _state["options"]
+
+
+@app.get("/web", include_in_schema=False)
+def web():
+    return FileResponse(WEB_PAGE)
 
 
 @app.post("/model/reload")

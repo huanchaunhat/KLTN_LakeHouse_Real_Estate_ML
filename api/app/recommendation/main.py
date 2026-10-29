@@ -14,6 +14,7 @@ from typing import Literal
 
 import mlflow
 import pandas as pd
+import requests
 from fastapi import FastAPI, Depends, HTTPException, Header, Query
 from fastapi.responses import FileResponse, Response, JSONResponse
 from pydantic import BaseModel, ConfigDict, Field, StrictInt
@@ -25,6 +26,8 @@ from recommendation.evaluate import evaluate_engine
 
 ROOT = Path(os.getenv('REIP_STATE', '/state'))
 WEB_ROOT = Path(__file__).resolve().parents[3] / 'web' / 'recommendation'
+# Sale-price model (api/app/main.py), proxied so the demo page stays same-origin.
+PRICE_API_URL = os.getenv('PRICE_API_URL', 'http://fastapi:8000')
 
 
 class Manager:
@@ -327,6 +330,30 @@ def create_app(manager=None, database=None):
                 writer.writerow([task_id, task['dataset_version'], task['split'], key, value, note])
             content, media = '\ufeff'+out.getvalue(), 'text/csv'
         return Response(content, media_type=media, headers={'Content-Disposition': f'attachment; filename="labels_{task_id[:8]}.{format}"'})
+
+    def price_api(method, path, body=None):
+        try:
+            response = requests.request(method, PRICE_API_URL + path, json=body, timeout=30)
+        except requests.RequestException as exc:
+            raise HTTPException(503, f'Không kết nối được API dự đoán giá: {exc}')
+        try:
+            content = response.json()
+        except ValueError:
+            content = {'detail': response.text}
+        return JSONResponse(status_code=response.status_code, content=content)
+
+    @app.get('/price/model')
+    def price_model():
+        return price_api('GET', '/model')
+
+    @app.get('/price/options')
+    def price_options():
+        return price_api('GET', '/options')
+
+    @app.post('/price/predict')
+    def price_predict(body: dict):
+        # The price API validates the payload against its own PropertyInput.
+        return price_api('POST', '/predict', body)
 
     return app
 
