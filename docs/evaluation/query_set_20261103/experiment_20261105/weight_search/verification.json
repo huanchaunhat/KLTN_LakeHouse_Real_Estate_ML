@@ -1,0 +1,26 @@
+{
+  "status": "completed",
+  "tune_queries": 120,
+  "test_queries": 120,
+  "candidates_per_market": {
+    "sale": 271,
+    "rent": 271
+  },
+  "additional_ai_pairs": {
+    "tune": 3293,
+    "test": 98
+  },
+  "original_inputs_unchanged": true,
+  "original_grade_pairs_preserved": 8924,
+  "cached_topk_matches_serving_all_queries": true,
+  "metrics_match_official_evaluator": true,
+  "all_evaluated_topk_judged": true,
+  "weights_frozen_before_test": true,
+  "locked_weights_sha256": "581a9e7acb21d7e83ab029d79a280cbcba7f8c5f18ef4909da55cbff9ce003dc",
+  "candidate_bundle": "artifacts/recommendation/models/weights_20261105",
+  "candidate_reload_passed": true,
+  "tfidf_retrained": false,
+  "serving_modified": false,
+  "human_relevance_verified": false,
+  "elapsed_seconds": 190.76
+}

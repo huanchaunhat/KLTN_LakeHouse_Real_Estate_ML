@@ -1,0 +1,92 @@
+{
+  "all": {
+    "n_queries": 120,
+    "mean_delta": 0.012797554992165085,
+    "percentile_95_interval": [
+      0.0002839375910367978,
+      0.02420499835554959
+    ],
+    "bootstrap_samples": 10000,
+    "seed": 20261105
+  },
+  "preferences": {
+    "n_queries": 60,
+    "mean_delta": 0.011713284987426232,
+    "percentile_95_interval": [
+      0.004880650132274726,
+      0.018886760814683237
+    ],
+    "bootstrap_samples": 10000,
+    "seed": 20261105
+  },
+  "rent": {
+    "n_queries": 60,
+    "mean_delta": 0.014004159525160197,
+    "percentile_95_interval": [
+      -0.009344539584583698,
+      0.035148901073887476
+    ],
+    "bootstrap_samples": 10000,
+    "seed": 20261105
+  },
+  "rent/preferences": {
+    "n_queries": 30,
+    "mean_delta": 0.01498066289044722,
+    "percentile_95_interval": [
+      0.003662059202570966,
+      0.026982622364716626
+    ],
+    "bootstrap_samples": 10000,
+    "seed": 20261105
+  },
+  "rent/similar": {
+    "n_queries": 30,
+    "mean_delta": 0.013027656159873174,
+    "percentile_95_interval": [
+      -0.03296377348404387,
+      0.0529952514564459
+    ],
+    "bootstrap_samples": 10000,
+    "seed": 20261105
+  },
+  "sale": {
+    "n_queries": 60,
+    "mean_delta": 0.011590950459169976,
+    "percentile_95_interval": [
+      0.0032697025514172385,
+      0.020355047122823575
+    ],
+    "bootstrap_samples": 10000,
+    "seed": 20261105
+  },
+  "sale/preferences": {
+    "n_queries": 30,
+    "mean_delta": 0.008445907084405246,
+    "percentile_95_interval": [
+      0.0005702372187195654,
+      0.016278266787614314
+    ],
+    "bootstrap_samples": 10000,
+    "seed": 20261105
+  },
+  "sale/similar": {
+    "n_queries": 30,
+    "mean_delta": 0.014735993833934705,
+    "percentile_95_interval": [
+      0.0001824686675727337,
+      0.030515687819674706
+    ],
+    "bootstrap_samples": 10000,
+    "seed": 20261105
+  },
+  "similar": {
+    "n_queries": 60,
+    "mean_delta": 0.013881824996903942,
+    "percentile_95_interval": [
+      -0.010182700079410554,
+      0.035613085872846305
+    ],
+    "bootstrap_samples": 10000,
+    "seed": 20261105
+  }
+}

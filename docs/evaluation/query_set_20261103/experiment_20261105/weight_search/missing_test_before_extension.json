@@ -1,0 +1,220 @@
+{
+  "sale_similar_house_002": [
+    "d612e726a1a979c428a51d122255968dac94d2f9614bf8b286aa26d33f8d65e8"
+  ],
+  "sale_similar_house_004": [
+    "cdc6dadcb97c5329669a7badb0c4e0a840e4a84dc1eed2d5f118d76304cb8e7f"
+  ],
+  "sale_similar_house_006": [
+    "ec679cb661aefd9c50638d5ca52c0a3758f0450d2200cbd0496c615de36d126a"
+  ],
+  "sale_similar_house_008": [
+    "15344394166a7afd23dc01423d1ba9de3ddf9ba212cecbbf82514f1fde76cabe",
+    "4775c93a086fada74c891670a3225abfe44d7e44d19b9d9d3a88eecc7f9c0567",
+    "7eb7aa245632ff055c0f1d75e0e496782220153cd0a07e8fb425342219e1208e"
+  ],
+  "sale_similar_house_012": [
+    "7ef38503c1c09bb72f7df95c9f50dc9c373f3276fb58e0384919b3fe50124e2c"
+  ],
+  "sale_similar_house_014": [
+    "6bc5005fc2658ab837ef88383a483b7a67054f3b9536dd641008e2678c107c32",
+    "862186297b64fc8bea30fb1c72d8842fcacc4bdea19c8ee3b5be0a94f7a1ce32"
+  ],
+  "sale_similar_house_016": [
+    "1204902fd99f650e04ccccf482d7463f0fe3299f6c60e9cb4b20478f121e697a",
+    "20f5b216489c8e0224d2abbaa371aeb85e62630523fbebd7f497ed31005c2f7f"
+  ],
+  "sale_similar_house_018": [
+    "ad89adabf13862555e1d64cd1e23e329d70e14a0c60aa90c519254c7c8c6605e",
+    "e5b1b7de77e405fa8eabe12ca75156e42269cc24cc4fb2ff16febc0775ea410a"
+  ],
+  "sale_similar_house_022": [
+    "125f33dd385b852b444aa5d93a0d19f683bb5e2e71cef2533f92902e4b6881d9",
+    "3618de3c599fa7bd2864850200e1c2982832c47c9bee1a432a491bfa48601834"
+  ],
+  "sale_similar_apartment_002": [
+    "d8f4e4d4be4920fc9d55047e3cdd0145d9e5b769ec1169344d83e95a52129c41"
+  ],
+  "sale_similar_apartment_004": [
+    "5e13158706d10712d1dfcfc1aff0fe73c8dfc9f36ff812435976fb6a01c55c28"
+  ],
+  "sale_similar_apartment_010": [
+    "47b7b9b5b0e6a8e04f625bda737c3e330918de50b53f3152995d12c11ef34b18",
+    "d1afe23d5d8f7ef0089324487bd3004bdb0bf7df2f5a478e91d92ab132cefa02"
+  ],
+  "sale_similar_apartment_012": [
+    "023fee6ad9b419d0fac153aedc844f3ea69cbbf3cd31f82afe7a8a5f3591caa2"
+  ],
+  "sale_similar_land_002": [
+    "3c90ea05e0dfec52aa2b32635ad5ab6270e75a0a90f6fd2f930ed19ffdad67c0"
+  ],
+  "sale_similar_land_004": [
+    "e5704ef03fb80a93e1a4275de56de7d049bbf7503449d1c5638600e0d2e7eb88"
+  ],
+  "sale_similar_land_012": [
+    "3c2f4192e407316577a1f0e3c73693dabc35c236f92cc740047729234d922f62"
+  ],
+  "sale_preferences_house_010": [
+    "092844f0776f4bbf0def2838d4c1d85d6128d45523426ea2a869e68b8bf96098"
+  ],
+  "sale_preferences_house_016": [
+    "6eacb32845b4ee6e184c68ca24c51820c18a3275088faaffd2e82e9458908088"
+  ],
+  "sale_preferences_house_018": [
+    "17025aee69e44a1d46365f92bbaa70c2b83b5eb58b9f9f5c3bd4897e258e5093"
+  ],
+  "sale_preferences_house_020": [
+    "98476641f65b686d8d39dfeb1de34530bbc2643ffe3edf57447f8e6d07040591"
+  ],
+  "sale_preferences_apartment_016": [
+    "6066e45231ed9040e4589c114ece4085ac1f3387f10be8eb1115711838a7c797"
+  ],
+  "sale_preferences_land_010": [
+    "cc452ea0f585cd35e1d70fe69093ac2ca48e862bc7cd7ec146b7057882ebedbc"
+  ],
+  "rent_similar_house_002": [
+    "962a33d33fd158f71c3654c440a21dc4c31228c052c784d75bad65003f11e367"
+  ],
+  "rent_similar_house_004": [
+    "e9566ee8b2163e76b4a9e13a59cf3e92684aa1fc62e78faa7311f7efdb3e9f45"
+  ],
+  "rent_similar_house_006": [
+    "a6f939459cf71e6c2caae565ae7712e96efa3c5482e8dc287a3b43a9964160f3"
+  ],
+  "rent_similar_house_008": [
+    "151b868f957be70aa1456c7a97ae0b8d8de51351c10501f373aacd1273734f58"
+  ],
+  "rent_similar_house_010": [
+    "44341f01ccbc4b9120e81a1951e3f36550a37239c3fb5e7a7d312ea5461e4c62",
+    "7278933746a2d5c5dc2adbdf79bbbeefc2e74c64f5fd27dca49863365ff7d672",
+    "8b2efd0ace558bb02a6107a02a9abfd41791952b766d432039900320952bd5f0",
+    "f683af07969334b3f190b68d41838338236598a14daa219d767b7c41db633477"
+  ],
+  "rent_similar_house_012": [
+    "dcd36391be456730c96b16159e30df6443fa2e5c8bdcbeea7078f5d13ed18356"
+  ],
+  "rent_similar_house_014": [
+    "d88b00b68abc284e0b54123838c00292d0566ddf0908b0779b563096f0ccc41b"
+  ],
+  "rent_similar_apartment_006": [
+    "96de1dcd8c5a79dd49618258437ef5651b3a220d1d1835a58262cf004fda52e8"
+  ],
+  "rent_similar_apartment_008": [
+    "1860c535763d631c85c84a87d308a00a35ce97c8e1c1526121f88aa62b4df15b",
+    "2bf7ff797f0925a58d4d488c1ace042c85dca2974d18aefc9200a11c7ca9c3aa",
+    "4012701d5439c9de391aa6204e0fd5b82e93f729232e4aa2b46ce5525515757b"
+  ],
+  "rent_similar_apartment_010": [
+    "ec0bcd2cc68169c81e680b200a0b7e0b8d45eca15f2cbe6b53d99e146b40a7f5"
+  ],
+  "rent_similar_apartment_012": [
+    "63acb79abd3aa09b4da361cf30b44b867efe22cb2d56c40c26651d08f585bbf9",
+    "d6bc6c7018dc7067f965df8d826e3c4bc965b79f2e5c55b89c24912ff35f162c",
+    "f03ef816370c5a5b423102ad590310e0f121e1f854e5af396547490921b0fd3f"
+  ],
+  "rent_similar_apartment_014": [
+    "119486a0d21d8b67389c46ce9aceebb418cce3ba3e10dd62ea81854bec1ac7ba"
+  ],
+  "rent_similar_apartment_016": [
+    "52c3bfe51f5189c710612f20aad08a9e0f2e3f782ee162b75d57b644bf1b53c8",
+    "994905c5e28d11d8738e3f5b8339e9e21b6a02b7cd07dd2fac551c5927cf64b1"
+  ],
+  "rent_similar_apartment_018": [
+    "5bf1a42a3405f6f18a03cecab54e529b47074a05143be2812e1113896a3c7a5c",
+    "b7df92495f0cb6297f22f23572a71e1ba3ec2963b235313159504910dc934431",
+    "dc438f83ee63372b7be6902375eb50e889066de8c300f5f8c99b6724a7b41ac2"
+  ],
+  "rent_similar_room_002": [
+    "28404b39f2929987dc7b546527707200cbc2e76b30fffd457aedfbf8c981da6f",
+    "31406d7d7c383ce4b71395e79a6d1d1f6301f81a14d684d7e4874731ebd94969",
+    "43fb20fac4a212bb20dfeda805abf24d45f51b5386ec08d1239a15a2a56c1ef7",
+    "848bb3efe86078718c050ca11099517e94ca817f982038736c49914b5a123ec4",
+    "878655e44a58e2768056a39fea91f04779c5c75f4c3501832fab8fdede6078cb",
+    "a633e483f7f6e59761ca48ab47c739817832db50ab61443d79cd36c73c858c76"
+  ],
+  "rent_similar_room_004": [
+    "3f928ac2d4c7fa8e193e10ffffcb5ffab5a72d2253ae4b1287aa0a8e7b97f5cf",
+    "a3d1dcbe2a80bb58b33a1a0bda6f88f57119d65f2972907c27e3702650d183d3"
+  ],
+  "rent_similar_room_008": [
+    "597478f6de9cb5b9dee9b80a2c43f69648f1c6fb62b33f815c30d6e536057889"
+  ],
+  "rent_similar_room_010": [
+    "e67f142f5f65edf717ce2ad36753dd249e3b7109e4f391963921865cf4dcda38"
+  ],
+  "rent_similar_room_012": [
+    "3126e3741245ba5d89eb6a1723e83f31af63e0b73c1bb39c6f7de7857ee17617",
+    "7b88da1ff88a07bcfb9a112b95385a061ad11765d44b99897997346ccafa14b2",
+    "940e3ac85baec61c86713f61d550fafe2583cf360d0ceb48969aed90e1343825",
+    "e7d9b411fe1165f17442e5e781a19abdd91e4c3f55b3288d6c99a5b7b18276d7"
+  ],
+  "rent_similar_room_014": [
+    "081adcb95d89287f03e293e956c17bea54c5b31929e978c4d1563d43f1185733",
+    "52180056e3ae966bc65937634e050ecdeb19b5a6fe47a9f09aaf69547b788785"
+  ],
+  "rent_similar_commercial_002": [
+    "58a3500fc9142f5e52aadfb99443dc39473fa98f345497ee8dc861e40d02818b",
+    "697ba9a23a3c2c4331b35ba2b6980cb8de91e22a88d44730152f7ab0369c5def"
+  ],
+  "rent_similar_commercial_004": [
+    "376d398b75fe53c3d975916a420a441953a2ccc78c253e09c9341733bffdab68",
+    "49f55bab9b3299d32484172e3c74ac85544c4e045100d8baf0482d3fa40834f7",
+    "ca87add85aab47593be3aa66721b32735814c842566c21bb74e8b1eee91dcafa"
+  ],
+  "rent_similar_commercial_006": [
+    "6387e494219e10acba287ca8891607d717a085bf5857cfa0a8c9631e39f84993",
+    "dd9e2aac48f09c81f861546a5030e0c57dc88f25c1334d143dfb64830a667ce2"
+  ],
+  "rent_similar_commercial_008": [
+    "3067537df6fcc4bd972ad09f4e92c6d63004c8032cf1b41bc28d363a6dea88ab",
+    "3f5494258056d5d0e82f10a1769b3f71f2eb1b928adde305464a87808e040781",
+    "4f1b3a9380ba4375e39f688d686d6bbccff3724dc3631dd23a8d04ead57db74e",
+    "ae53feceea90f8e883b7f52f2fbda31012880dc697b56d122535e636f6e0fbdc"
+  ],
+  "rent_similar_commercial_010": [
+    "317c06b4b566ca7b51f0b431bee002e686c343b7e7a135f7e01141234635bbda",
+    "a8ca5ea6f4c5b3a698b8a2d23d96efceaafdcb1ca87c74c9a945fc7859f34bc5"
+  ],
+  "rent_similar_land_002": [
+    "eec4b7da84e84fb676b175ae9045c8d919e47e3c862886bd76a3941569f1882c"
+  ],
+  "rent_preferences_house_004": [
+    "e1afbeb27e2ae4cdf4188ef96442801f7460ff8c425fceb8f958691442635212",
+    "fb4862a9b81cadb64d66e4d2cae65a380c8e3bf1364662ae8017db08a5cc25ee"
+  ],
+  "rent_preferences_house_010": [
+    "d7ed91b172868f0dce48c10b785ac618e6b73486497897f3cae0c5ff53654cc1"
+  ],
+  "rent_preferences_apartment_004": [
+    "5f390c528cefb41769975ec6b279fca95c57723b8cd9b0151ba74bad9b58944e"
+  ],
+  "rent_preferences_apartment_008": [
+    "d7d385192b371709e0a9a5aaee439f3b11b910ce5b5671fc90ed868a4d6fb038"
+  ],
+  "rent_preferences_apartment_018": [
+    "9cf20086bda2328bbd7d63023e32520d6d626d0cff2fdf782e02d9238ce4c517"
+  ],
+  "rent_preferences_room_002": [
+    "d349373e9e495b29648b4d03ed07d91ef54284eeedc296a3698554f1f2a651e4"
+  ],
+  "rent_preferences_room_004": [
+    "c59c803aa1c7414dfd16696d98622104bc3f86c9f4284e43fe6a72ec25dbfc34"
+  ],
+  "rent_preferences_room_008": [
+    "875f91fa3eef440c41c7ce04dfdae95669898c3262aed4f51f34017930c2f2da"
+  ],
+  "rent_preferences_room_010": [
+    "56773d73ee11d953cf78f121d549f29e0f1a5a9c2428a1b7dfd8745efdbe11b5",
+    "7dd31da727e5189bb9a3b6e7481f82253e8833d767828d8e5ee56acd091743d9"
+  ],
+  "rent_preferences_room_014": [
+    "30886098c168b52d7f1c2cfe2fcc521487060250adb505b2bbadadd4e31857c3",
+    "9a4726b50ac0e604ceee0558b821a6beca905f0ff98fc609eb713a8b9b931b0d"
+  ],
+  "rent_preferences_room_016": [
+    "eae766ede3b1b9537519859f5304d2994066b4b352d27699742d60780820d510"
+  ],
+  "rent_preferences_commercial_010": [
+    "986afd503347f5bb929241850d19604653d8af69f70ed8fb79b0f3f2142e2bfd"
+  ]
+}

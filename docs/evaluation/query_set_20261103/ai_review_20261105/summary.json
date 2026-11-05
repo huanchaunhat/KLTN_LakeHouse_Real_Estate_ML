@@ -1,0 +1,80 @@
+{
+  "completed_on": "2026-11-05",
+  "policy_id": "user_column_authority_20261105",
+  "policy": {
+    "confirmed_by": "user",
+    "confirmed_on": "2026-11-05",
+    "price": "price_vnd and its price_period column govern assessment when prose differs",
+    "geography": "province, district, ward and corresponding snapshot IDs govern assessment",
+    "bedrooms": "bedrooms column governs hard filters and numeric comparison",
+    "area": "area_m2 column is the comparison basis; house/land area is land area, while prose may describe total floor area",
+    "area_example": "38 m2 land with ground floor and one upper floor can be described as 76 m2 total floor area; compare 38 to land-area targets",
+    "scope": "Only rows whose grade is blank on this run; preserve every existing grade, annotator_id and reason"
+  },
+  "annotator_id_for_new_rows": "AI01",
+  "annotator_type": "AI rule-based draft with user-confirmed column precedence",
+  "labels_status": "all_pairs_graded_ai_draft",
+  "human_relevance_verified": false,
+  "dataset_version": "gold.ml_recommendation_features.0c7012e3-c819-43fd-9437-e64065ff9669.delta_v4",
+  "as_of": "2026-11-03T05:26:14.962227+00:00",
+  "newly_graded_pairs": 543,
+  "previously_graded_rows_preserved": 8381,
+  "total_pairs": 8924,
+  "pending_pairs": 0,
+  "ready_for_full_import": true,
+  "stats": {
+    "tune": {
+      "pairs": 4399,
+      "queries": 120,
+      "newly_graded_pairs": 365,
+      "previously_graded_rows_preserved": 4034,
+      "pending_pairs": 0,
+      "grade_distribution": {
+        "2": 2420,
+        "1": 1349,
+        "3": 459,
+        "0": 171
+      },
+      "non_annotation_cells_unchanged": true,
+      "existing_annotation_rows_unchanged": true,
+      "field_and_row_order_preserved": true,
+      "pairs_match_original_jsonl": true
+    },
+    "test": {
+      "pairs": 4525,
+      "queries": 120,
+      "newly_graded_pairs": 178,
+      "previously_graded_rows_preserved": 4347,
+      "pending_pairs": 0,
+      "grade_distribution": {
+        "1": 1728,
+        "2": 2294,
+        "3": 383,
+        "0": 120
+      },
+      "non_annotation_cells_unchanged": true,
+      "existing_annotation_rows_unchanged": true,
+      "field_and_row_order_preserved": true,
+      "pairs_match_original_jsonl": true
+    }
+  },
+  "source_files_sha256": {
+    "queries.csv": "a6f2606d9cb3f66f488ccd6db00080ebc7c4c5c8133259a49c92a6f1ea0645fc",
+    "queries_tune.jsonl": "a61a01fc731c965f775f6669b205483fb795c9f9878e6dbe1fadc210ddcbe0cd",
+    "queries_test.jsonl": "e7d86c27ebdad29b52da0cb985d60b8d64d56a61d4a34218bce920a5ce285a30",
+    "manifest.json": "2b15f13c25ecb7364fdf915e1b8f08c783b8fad1ecdd45fdaa15bc5bffcfabd8"
+  },
+  "previous_grading_procedure_sha256": "a341fd913b881225c89f09f9d092cd029c8a6fc6e72e6751f3ad3e284dabc4e2",
+  "annotation_files_sha256": {
+    "tune": "20e6c9793a341bc1a71200d986ecf60f0204d76154a829f8fe9cc88d022d8977",
+    "test": "379b7047574531aeb4ee271465f5d25940517d8ecce119506673ae7724dd8a7f"
+  },
+  "pre_completion_files_sha256": {
+    "tune": "57189d5b10b51955cb92f9fb1d8196416cfc891678a51e5f43ee27467afc2843",
+    "test": "63c81b7bd77d6e330b6d3cfd9b448994e77eb233563831f74f3e8477cc152690"
+  },
+  "model_scores_used": false,
+  "ranking_metrics_run": false,
+  "weights_changed": false,
+  "historical_review_directory": "ai_review_20261103"
+}

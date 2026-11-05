@@ -1,0 +1,20 @@
+{
+  "rent/tune": {
+    "n_queries": 60,
+    "precision@10": 0.9683333333333333,
+    "precision_queries": 60,
+    "pooled_recall@10": 0.2189862748703975,
+    "pooled_recall_queries": 60,
+    "ndcg@10": 0.7660340864801692,
+    "ndcg_queries": 60
+  },
+  "sale/tune": {
+    "n_queries": 60,
+    "precision@10": 0.9650000000000001,
+    "precision_queries": 60,
+    "pooled_recall@10": 0.26037948007199224,
+    "pooled_recall_queries": 60,
+    "ndcg@10": 0.8407246620413978,
+    "ndcg_queries": 60
+  }
+}

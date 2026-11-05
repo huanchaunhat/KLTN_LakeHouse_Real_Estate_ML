@@ -1,0 +1,20 @@
+{
+  "rent/test": {
+    "n_queries": 60,
+    "precision@10": 0.9616666666666667,
+    "precision_queries": 60,
+    "pooled_recall@10": 0.28752300233900735,
+    "pooled_recall_queries": 60,
+    "ndcg@10": 0.8663328094185818,
+    "ndcg_queries": 60
+  },
+  "sale/test": {
+    "n_queries": 60,
+    "precision@10": 0.9783333333333334,
+    "precision_queries": 60,
+    "pooled_recall@10": 0.30063419523019946,
+    "pooled_recall_queries": 60,
+    "ndcg@10": 0.8826392673297014,
+    "ndcg_queries": 60
+  }
+}

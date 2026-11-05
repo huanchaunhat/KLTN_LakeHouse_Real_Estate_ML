@@ -1,0 +1,176 @@
+{
+  "dataset_version": "gold.ml_recommendation_features.0c7012e3-c819-43fd-9437-e64065ff9669.delta_v4",
+  "as_of": "2026-11-03T05:26:14.962227+00:00",
+  "evaluation_type": "mechanics_only_no_relevance_labels",
+  "load_seconds": 12.177,
+  "markets": {
+    "sale": {
+      "rows": 23686,
+      "similar_queries": 15,
+      "similar_results": 150,
+      "similar_violations": 0,
+      "underfilled_similar_queries": 0,
+      "similar_p95_ms": 373.88,
+      "preference_queries": 15,
+      "preference_results": 130,
+      "preference_violations": 0,
+      "preference_p95_ms": 14.37,
+      "example": {
+        "seed": "e66dd19dce542cf6519b3558da505b9ecf0bdf654b22ade2349f32abe9a67704",
+        "recommendations": [
+          {
+            "listing_key": "4ff90e7e984163fa6d804293d89ce5fbb0c8c53e94cdb226f429aec1424e567a",
+            "title": "Mua nhà D-Aqua đón đầu cầu Bình Tiên, giá 70-75tr/m2, nhà mới ở ngay",
+            "url": "https://gateway.chotot.com/v1/public/ad-listing/134704013",
+            "transaction_type": "sale",
+            "property_category": "APARTMENT",
+            "price_vnd": 5200000000.0,
+            "price_period": "total",
+            "area_m2": 74.0,
+            "province": "Tp Hồ Chí Minh",
+            "district": "Quận 8",
+            "score": 0.865854,
+            "reasons": {
+              "text": 0.632406,
+              "area": 1.0,
+              "location": 1.0,
+              "price": 1.0,
+              "structure": 1.0,
+              "freshness": 0.999541
+            },
+            "dataset_version": "gold.ml_recommendation_features.0c7012e3-c819-43fd-9437-e64065ff9669.delta_v4"
+          },
+          {
+            "listing_key": "fcf3fb86bf33d23b01fb41f95d15f30ef87a955a22b2bc28e21cde9df554432b",
+            "title": "Bán căn góc 2pn căn hộ D-Aqua, nhà mới 100% chưa ở - view Bến Bình Đôn",
+            "url": "https://gateway.chotot.com/v1/public/ad-listing/135079478",
+            "transaction_type": "sale",
+            "property_category": "APARTMENT",
+            "price_vnd": 4950000000.0,
+            "price_period": "total",
+            "area_m2": 71.0,
+            "province": "Tp Hồ Chí Minh",
+            "district": "Quận 8",
+            "score": 0.856204,
+            "reasons": {
+              "text": 0.734932,
+              "area": 0.871142,
+              "location": 1.0,
+              "price": 0.868685,
+              "structure": 0.873576,
+              "freshness": 0.999645
+            },
+            "dataset_version": "gold.ml_recommendation_features.0c7012e3-c819-43fd-9437-e64065ff9669.delta_v4"
+          },
+          {
+            "listing_key": "4131aa1109fda0575fa1dccda2ca07b66ccd012a235a7d52e6faa100d2793c53",
+            "title": "Bán Mini Garden 71m2 căn hộ D-Aqua Q8 nhà mới Full nội thất vào ở ngay",
+            "url": "https://gateway.chotot.com/v1/public/ad-listing/134761922",
+            "transaction_type": "sale",
+            "property_category": "APARTMENT",
+            "price_vnd": 5100000000.0,
+            "price_period": "total",
+            "area_m2": 71.0,
+            "province": "Tp Hồ Chí Minh",
+            "district": "Quận 8",
+            "score": 0.840186,
+            "reasons": {
+              "text": 0.66636,
+              "area": 0.871142,
+              "location": 1.0,
+              "price": 0.946031,
+              "structure": 0.673576,
+              "freshness": 0.999541
+            },
+            "dataset_version": "gold.ml_recommendation_features.0c7012e3-c819-43fd-9437-e64065ff9669.delta_v4"
+          }
+        ]
+      }
+    },
+    "rent": {
+      "rows": 38659,
+      "similar_queries": 15,
+      "similar_results": 150,
+      "similar_violations": 0,
+      "underfilled_similar_queries": 0,
+      "similar_p95_ms": 260.83,
+      "preference_queries": 15,
+      "preference_results": 80,
+      "preference_violations": 0,
+      "preference_p95_ms": 15.04,
+      "example": {
+        "seed": "0e6ab91d15d2f6431d7c587312a969e0dee85a50a8180a7d2c4574cd976209de",
+        "recommendations": [
+          {
+            "listing_key": "0457bafeb0ea90e8e8fb6706bc3c57935900c2204f359a21b4fc288fccb53ea1",
+            "title": "cho thuê nhà đường bùi quang là p. an hội tây tp hcm.dt 4*8 1lau 2pn ",
+            "url": "https://gateway.chotot.com/v1/public/ad-listing/135352116",
+            "transaction_type": "rent",
+            "property_category": "HOUSE",
+            "price_vnd": 6500000.0,
+            "price_period": "month",
+            "area_m2": 32.0,
+            "province": "Tp Hồ Chí Minh",
+            "district": "Quận Gò Vấp",
+            "score": 0.826892,
+            "reasons": {
+              "text": 0.516868,
+              "area": 1.0,
+              "location": 0.996094,
+              "price": 1.0,
+              "structure": 1.0,
+              "freshness": 0.999571
+            },
+            "dataset_version": "gold.ml_recommendation_features.0c7012e3-c819-43fd-9437-e64065ff9669.delta_v4"
+          },
+          {
+            "listing_key": "f2e20c3db511012509db8d28e749a9024c9741a77e36dab8b19aec879261ff0f",
+            "title": "nhà quang trung trung tâm gò vấp",
+            "url": "https://gateway.chotot.com/v1/public/ad-listing/134796554",
+            "transaction_type": "rent",
+            "property_category": "HOUSE",
+            "price_vnd": 6500000.0,
+            "price_period": "month",
+            "area_m2": 32.0,
+            "province": "Tp Hồ Chí Minh",
+            "district": "Quận Gò Vấp",
+            "score": 0.696533,
+            "reasons": {
+              "text": 0.363993,
+              "area": 1.0,
+              "location": 0.7668,
+              "price": 1.0,
+              "structure": 0.75,
+              "freshness": 0.99936
+            },
+            "dataset_version": "gold.ml_recommendation_features.0c7012e3-c819-43fd-9437-e64065ff9669.delta_v4"
+          },
+          {
+            "listing_key": "37507005f19369a20c017520a0691c62dd618cdc9c4722b00294faf9d9c40391",
+            "title": "Thuê nhà Gò Vấp",
+            "url": "https://gateway.chotot.com/v1/public/ad-listing/135434981",
+            "transaction_type": "rent",
+            "property_category": "HOUSE",
+            "price_vnd": 6500000.0,
+            "price_period": "month",
+            "area_m2": 28.0,
+            "province": "Tp Hồ Chí Minh",
+            "district": "Quận Gò Vấp",
+            "score": 0.680012,
+            "reasons": {
+              "text": 0.235989,
+              "area": 0.640757,
+              "location": 1.0,
+              "price": 1.0,
+              "structure": 1.0,
+              "freshness": 0.999587
+            },
+            "dataset_version": "gold.ml_recommendation_features.0c7012e3-c819-43fd-9437-e64065ff9669.delta_v4"
+          }
+        ]
+      }
+    }
+  },
+  "peak_process_rss_mb": 1028.1,
+  "total_seconds": 18.84
+}

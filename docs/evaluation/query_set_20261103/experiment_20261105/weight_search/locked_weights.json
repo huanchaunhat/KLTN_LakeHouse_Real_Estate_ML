@@ -1,0 +1,25 @@
+{
+  "selected_weights": {
+    "sale": {
+      "text": 0.36476837577434496,
+      "price": 0.19437928564757223,
+      "area": 0.13757778449771552,
+      "location": 0.14403658516475795,
+      "structure": 0.030130448702631388,
+      "freshness": 0.12910752021297803
+    },
+    "rent": {
+      "text": 0.35590453684601686,
+      "price": 0.16965049233499854,
+      "area": 0.13380509131446916,
+      "location": 0.29550358471742844,
+      "structure": 0.03275862920105698,
+      "freshness": 0.012377665586030005
+    }
+  },
+  "selection_split": "tune",
+  "test_metrics_seen": false,
+  "frozen_at": "2026-11-05T08:55:50.227871+00:00",
+  "plan_sha256": "67579aba0c6794aeabefad56a0d78f3fe1c27a3794ea13b9adb8bdb463d4ce34",
+  "tune_labels_sha256": "5de8488900104e969203009e1d0b94a84dcd73c58af6fa466b0835d1e8ab62f3"
+}

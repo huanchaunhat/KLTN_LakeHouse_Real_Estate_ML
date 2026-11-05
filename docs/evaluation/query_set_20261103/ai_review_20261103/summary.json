@@ -1,0 +1,65 @@
+{
+  "annotator_id": "AI01",
+  "annotator_type": "AI-assisted rule-based draft with targeted qualitative review",
+  "human_verified": false,
+  "dataset_version": "gold.ml_recommendation_features.0c7012e3-c819-43fd-9437-e64065ff9669.delta_v4",
+  "as_of": "2026-11-03T05:26:14.962227+00:00",
+  "labels_status": "provisional_ai_with_unresolved_review_items",
+  "stats": {
+    "tune": {
+      "pairs": 4399,
+      "queries": 120,
+      "grade_distribution": {
+        "2": 2252,
+        "1": 1183,
+        "review": 367,
+        "3": 449,
+        "0": 148
+      }
+    },
+    "test": {
+      "pairs": 4525,
+      "queries": 120,
+      "grade_distribution": {
+        "1": 1651,
+        "2": 2204,
+        "3": 377,
+        "0": 115,
+        "review": 178
+      }
+    }
+  },
+  "verification": {
+    "tune": {
+      "all_non_annotation_cells_unchanged": true,
+      "row_column_pair_order_preserved": true,
+      "pairs_match_original_jsonl": true,
+      "utf8_bom_preserved": true,
+      "original_sha256": "bcc55152690bf7f865a42c9b0e3eb0a83ec8443addb45439a46bb0a36bbb68af",
+      "annotated_sha256": "d054b989711fe40b99769ddba825543ca71dd959f472fa1406948e884e156f4e"
+    },
+    "test": {
+      "all_non_annotation_cells_unchanged": true,
+      "row_column_pair_order_preserved": true,
+      "pairs_match_original_jsonl": true,
+      "utf8_bom_preserved": true,
+      "original_sha256": "4719719b9024e2d0f838104274604fb924aa016129a2610e083faac6913b3944",
+      "annotated_sha256": "63c81b7bd77d6e330b6d3cfd9b448994e77eb233563831f74f3e8477cc152690"
+    }
+  },
+  "model_scores_used": false,
+  "pool_audit_opened": false,
+  "ranking_metrics_run": false,
+  "weights_changed": false,
+  "source_files_sha256": {
+    "queries.csv": "a6f2606d9cb3f66f488ccd6db00080ebc7c4c5c8133259a49c92a6f1ea0645fc",
+    "queries_tune.jsonl": "a61a01fc731c965f775f6669b205483fb795c9f9878e6dbe1fadc210ddcbe0cd",
+    "queries_test.jsonl": "e7d86c27ebdad29b52da0cb985d60b8d64d56a61d4a34218bce920a5ce285a30",
+    "manifest.json": "2b15f13c25ecb7364fdf915e1b8f08c783b8fad1ecdd45fdaa15bc5bffcfabd8"
+  },
+  "annotation_guideline_sha256": "bd88fa956c8ef0edf0b4a72ff5c529311ccce0fab3deaec56b461651a30a8091",
+  "graded_pairs": 8379,
+  "pending_pairs": 545,
+  "ready_for_full_import": false,
+  "final_ground_truth": false
+}

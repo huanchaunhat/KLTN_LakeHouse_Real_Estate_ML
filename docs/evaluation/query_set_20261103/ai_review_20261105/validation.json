@@ -1,0 +1,24 @@
+{
+  "non_annotation_cells_unchanged": true,
+  "previously_graded_rows_unchanged": true,
+  "pending_pairs": 0,
+  "splits": {
+    "tune": {
+      "pairs": 4399,
+      "newly_completed": 365,
+      "pending": 0,
+      "project_importer_passed": true
+    },
+    "test": {
+      "pairs": 4525,
+      "newly_completed": 178,
+      "pending": 0,
+      "project_importer_passed": true
+    }
+  },
+  "newly_completed": 543,
+  "prior_rows_preserved": 8381,
+  "total_pairs": 8924,
+  "temporary_import_artifacts_cleaned": true,
+  "evaluation_metrics_run": false
+}
