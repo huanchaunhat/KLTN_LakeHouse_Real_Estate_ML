@@ -1,64 +1,59 @@
 -- =============================================================================
--- Dashboard "Tổng quan thị trường BĐS TP.HCM" - query cho Superset SQL Lab (Spark SQL).
--- Mỗi query trả lời một câu hỏi, dán vào SQL Lab rồi "Save dataset" và vẽ chart.
+-- Dashboard "Tổng quan tập dữ liệu BĐS TP.HCM" - query cho Superset SQL Lab.
+-- Mỗi query: dán vào SQL Lab -> Save dataset -> vẽ chart ghi ở đầu query.
+-- Sắp chart trên dashboard theo đúng thứ tự:
+--   Phần A. Tổng quan  (Q1 -> Q9):  dữ liệu có gì.
+--   Phần B. Phân tích  (Q10 -> Q12): vì sao nhà đắt / rẻ (so cùng quận, cùng diện tích).
 --
--- Mạch câu chuyện (sắp chart trên dashboard theo đúng thứ tự này):
---   0. KPI             Bức tranh trong 5 con số.
---   1. Thị trường có gì?          Cơ cấu nguồn cung và nơi nguồn cung tập trung.
---   2. Giá bao nhiêu, ở đâu đắt?  Mặt bằng giá, bản đồ giá, chênh lệch theo khu vực.
---   3. Vì sao đắt / rẻ?           Diện tích, đặc điểm nhà, pháp lý.
---   4. Thị trường đang đi về đâu? Xu hướng giá, cung mới vs tin gỡ, giảm giá.
---   5. Bán có dễ không, thuê thì sao?  Thanh khoản, giá thuê, tỷ suất cho thuê.
--- Phần chất lượng dữ liệu / chuẩn bị train nằm ở ml_data_quality_queries.sql.
---
--- Quy ước:
---   * Giá/m² tính bằng triệu đồng, giá bán tính bằng tỷ đồng,
---     giá thuê tính bằng triệu đồng / tháng.
---   * Cung (số tin) dùng gold.fct_listing, chỉ lấy tin is_market_eligible.
---   * Giá bán dùng gold.ml_price_features: tin BÁN, trạng thái mới nhất của mọi
---     tin đã thấy trong kỳ crawl (gồm cả tin đã gỡ), đã loại outlier.
---     -> Ghi chú trên dashboard: "Số tin = tin đang rao; Giá = mọi tin bán đã
---        quan sát, đã loại giá bất thường", để số liệu hai phần không bị hỏi vì
---        sao lệch nhau.
---   * Xu hướng theo thời gian dùng các mart agg_*_weekly, luôn lọc is_reliable.
---   * Nhóm có quá ít tin bị loại (HAVING) để median không bị nhiễu.
+-- Đơn vị: giá bán = tỷ đồng, giá/m² = triệu đồng, giá thuê = triệu đồng/tháng.
+-- Số tin lấy từ gold.fct_listing; giá bán lấy từ gold.ml_price_features
+-- (tin bán đã làm sạch, đã loại outlier).
 -- =============================================================================
 
 
 -- =============================================================================
--- 0. KPI (Big Number) ở đầu dashboard
+-- PHẦN A. TỔNG QUAN
 -- =============================================================================
-WITH latest_week_change AS (
-    -- Thay đổi median giá/m² nhà ở toàn thành phố của tuần gần nhất có đủ mẫu.
-    SELECT max_by(median_price_per_m2_change_pct, period_start) AS change_pct
-    FROM gold.agg_price_trend_weekly
-    WHERE geo_level = 'CITY'
-      AND transaction_type = 'sale'
-      AND property_type = 'Nhà ở'
-      AND is_reliable
-      AND median_price_per_m2_change_pct IS NOT NULL
-)
 
-SELECT
-    (SELECT count(*) FROM gold.fct_listing
-      WHERE is_active AND is_market_eligible AND transaction_type = 'sale') AS so_tin_ban_dang_rao,
-    (SELECT count(*) FROM gold.fct_listing
-      WHERE is_active AND is_market_eligible AND transaction_type = 'rent') AS so_tin_thue_dang_rao,
-    (SELECT round(percentile_approx(price_per_m2, 0.5) / 1e6, 1)
-       FROM gold.ml_price_features
-      WHERE property_category = 'HOUSE')                                    AS median_gia_m2_nha_ban_trieu,
-    (SELECT round(change_pct, 2) FROM latest_week_change)                   AS thay_doi_gia_m2_tuan_pct,
-    (SELECT round(avg(cast(total_price_change_pct < 0 AS int)) * 100, 2)
-       FROM gold.fct_listing
-      WHERE is_market_eligible AND NOT is_price_outlier)                    AS ty_le_tin_da_giam_gia_pct;
-
-
--- =============================================================================
--- 1. THỊ TRƯỜNG CÓ GÌ?
--- =============================================================================
 
 -- -----------------------------------------------------------------------------
--- Q1.1. Cơ cấu thị trường theo loại BĐS và hình thức bán / thuê?
+-- Q1. Tập dữ liệu trong vài con số
+-- Chart: Big Number, mỗi cột một chart.
+-- -----------------------------------------------------------------------------
+SELECT
+    (SELECT count(*) FROM silver.int_crawl_snapshots)                       AS so_lan_crawl,
+    (SELECT to_date(min(snapshot_started_at)) FROM silver.int_crawl_snapshots) AS tu_ngay,
+    (SELECT to_date(max(snapshot_started_at)) FROM silver.int_crawl_snapshots) AS den_ngay,
+    (SELECT count(*) FROM silver.stg_nhatot_properties)                     AS so_ban_ghi_crawl,
+    (SELECT count(*) FROM gold.fct_listing WHERE is_market_eligible)        AS so_tin,
+    (SELECT count(*) FROM gold.fct_listing
+      WHERE is_market_eligible AND transaction_type = 'sale')               AS so_tin_ban,
+    (SELECT count(*) FROM gold.fct_listing
+      WHERE is_market_eligible AND transaction_type = 'rent')               AS so_tin_thue,
+    (SELECT round(percentile_approx(price_per_m2, 0.5) / 1e6, 1)
+       FROM gold.ml_price_features
+      WHERE property_category = 'HOUSE')                                    AS median_gia_m2_nha;
+
+
+-- -----------------------------------------------------------------------------
+-- Q2. Từ tin bán thu được, còn bao nhiêu tin sạch để phân tích giá?
+-- Chart: Funnel. Dimension = buoc, Metric = MAX(so_tin)
+-- Mọi bước đều đếm theo TIN (không đếm bản ghi crawl lặp lại).
+-- -----------------------------------------------------------------------------
+SELECT '1. Tin bán thu thập được' AS buoc, count(*) AS so_tin
+  FROM gold.fct_listing
+ WHERE transaction_type = 'sale' AND is_market_eligible
+UNION ALL
+SELECT '2. Đủ thông tin, giá không bất thường', count(*)
+  FROM gold.fct_listing
+ WHERE transaction_type = 'sale' AND is_price_training_eligible AND NOT is_price_outlier
+UNION ALL
+SELECT '3. Bỏ tin trùng, vị trí sai, văn phòng', count(*)
+  FROM gold.ml_price_features;
+
+
+-- -----------------------------------------------------------------------------
+-- Q3. Tập dữ liệu gồm những loại BĐS nào, bán hay thuê?
 -- Chart: Bar Chart (stacked). X = loai_bds, Series = giao_dich, Metric = SUM(so_tin)
 -- -----------------------------------------------------------------------------
 SELECT
@@ -67,136 +62,142 @@ SELECT
     count(*)                                                         AS so_tin
 FROM gold.fct_listing f
 JOIN gold.dim_property_type pt ON f.property_type_key = pt.property_type_key
-WHERE f.is_active
-  AND f.is_market_eligible
-GROUP BY pt.property_type, f.transaction_type
-ORDER BY so_tin DESC;
+WHERE f.is_market_eligible
+GROUP BY pt.property_type, f.transaction_type;
 
 
 -- -----------------------------------------------------------------------------
--- Q1.2. Nguồn cung tập trung ở những quận nào?
+-- Q4. Tin tập trung ở quận nào?
 -- Chart: Bar Chart (ngang, stacked). X = quan, Series = giao_dich, Metric = SUM(so_tin)
 -- -----------------------------------------------------------------------------
 SELECT
     loc.district                                                     AS quan,
-    loc.area_zone                                                    AS khu_vuc,
     CASE f.transaction_type WHEN 'sale' THEN 'Bán' ELSE 'Cho thuê' END AS giao_dich,
     count(*)                                                         AS so_tin
 FROM gold.fct_listing f
 JOIN gold.dim_location loc ON f.location_key = loc.location_key
-WHERE f.is_active
-  AND f.is_market_eligible
+WHERE f.is_market_eligible
   AND loc.district <> 'Không rõ'
-GROUP BY loc.district, loc.area_zone, f.transaction_type
-ORDER BY so_tin DESC;
+GROUP BY loc.district, f.transaction_type;
 
-
--- =============================================================================
--- 2. GIÁ BAO NHIÊU, Ở ĐÂU ĐẮT?
--- =============================================================================
 
 -- -----------------------------------------------------------------------------
--- Q2.1. Giá bán phổ biến nằm ở khoảng nào, khác nhau ra sao giữa các loại BĐS?
--- Chart: Bar Chart (grouped). X = khoang_gia (đã đánh số để giữ thứ tự),
---        Series = nhom_bds, Metric = SUM(so_tin)
+-- Q5. Mỗi thuộc tính được điền đầy đủ bao nhiêu %?
+-- Chart: Heatmap. X = thuoc_tinh, Y = loai_bds, Metric = MAX(ty_le_co_du_lieu_pct)
+-- -----------------------------------------------------------------------------
+WITH coverage AS (
+    SELECT
+        trim(property_type)                                          AS loai_bds,
+        avg(cast(ward_id         IS NOT NULL AS int)) * 100          AS phuong,
+        avg(cast(street          IS NOT NULL AS int)) * 100          AS duong,
+        avg(cast(bedrooms        IS NOT NULL AS int)) * 100          AS phong_ngu,
+        avg(cast(bathrooms       IS NOT NULL AS int)) * 100          AS phong_tam,
+        avg(cast(total_floors    IS NOT NULL AS int)) * 100          AS so_tang,
+        avg(cast(width_m         IS NOT NULL AS int)) * 100          AS chieu_ngang,
+        avg(cast(house_direction IS NOT NULL AS int)) * 100          AS huong,
+        avg(cast(legal_status    IS NOT NULL AS int)) * 100          AS phap_ly,
+        avg(cast(furnishing      IS NOT NULL AS int)) * 100          AS noi_that
+    FROM silver.listing_current
+    WHERE is_market_eligible
+    GROUP BY trim(property_type)
+)
+
+SELECT loai_bds, thuoc_tinh, round(ty_le, 1) AS ty_le_co_du_lieu_pct
+FROM coverage
+LATERAL VIEW stack(9,
+    'Phường',      phuong,
+    'Đường',       duong,
+    'Phòng ngủ',   phong_ngu,
+    'Phòng tắm',   phong_tam,
+    'Số tầng',     so_tang,
+    'Chiều ngang', chieu_ngang,
+    'Hướng nhà',   huong,
+    'Pháp lý',     phap_ly,
+    'Nội thất',    noi_that
+) t AS thuoc_tinh, ty_le;
+
+
+-- -----------------------------------------------------------------------------
+-- Q6. Giá và diện tích phân bố ra sao?
+-- Chart: Histogram, mỗi cột một chart (gia_ty, gia_m2_trieu, dien_tich_m2).
+--        Thêm filter loai_bds.
 -- -----------------------------------------------------------------------------
 SELECT
-    CASE
-        WHEN price_vnd < 1e9  THEN '01. < 1 tỷ'
-        WHEN price_vnd < 2e9  THEN '02. 1–2 tỷ'
-        WHEN price_vnd < 3e9  THEN '03. 2–3 tỷ'
-        WHEN price_vnd < 5e9  THEN '04. 3–5 tỷ'
-        WHEN price_vnd < 7e9  THEN '05. 5–7 tỷ'
-        WHEN price_vnd < 10e9 THEN '06. 7–10 tỷ'
-        WHEN price_vnd < 15e9 THEN '07. 10–15 tỷ'
-        WHEN price_vnd < 20e9 THEN '08. 15–20 tỷ'
-        WHEN price_vnd < 30e9 THEN '09. 20–30 tỷ'
-        WHEN price_vnd < 50e9 THEN '10. 30–50 tỷ'
-        ELSE                       '11. ≥ 50 tỷ'
-    END                                                              AS khoang_gia,
-    property_type                                                    AS nhom_bds,
-    count(*)                                                         AS so_tin
-FROM gold.ml_price_features
-WHERE property_category IN ('HOUSE', 'APARTMENT', 'LAND')
-GROUP BY 1, 2
-ORDER BY 1, 2;
-
-
--- -----------------------------------------------------------------------------
--- Q2.2. Nhìn trên bản đồ, vùng nào đắt, vùng nào rẻ?
--- Chart: deck.gl Scatterplot. Longitude = kinh_do, Latitude = vi_do,
---        màu / kích thước theo gia_m2_trieu (cần MAPBOX_API_KEY cho bản đồ nền).
---        Thêm filter loai_bds để so cùng loại.
--- Khung toạ độ giới hạn quanh TP.HCM để loại toạ độ sai.
--- -----------------------------------------------------------------------------
-SELECT
-    listing_key,
-    latitude                                                         AS vi_do,
-    longitude                                                        AS kinh_do,
-    district                                                         AS quan,
     property_type                                                    AS loai_bds,
+    round(price_vnd / 1e9, 2)                                        AS gia_ty,
     round(price_per_m2 / 1e6, 1)                                     AS gia_m2_trieu,
-    round(price_vnd / 1e9, 2)                                        AS gia_ty
-FROM gold.ml_price_features
-WHERE latitude  BETWEEN 10.3 AND 11.2
-  AND longitude BETWEEN 106.3 AND 107.1;
+    area_m2                                                          AS dien_tich_m2
+FROM gold.ml_price_features;
 
 
 -- -----------------------------------------------------------------------------
--- Q2.3. Giá/m² nhà ở chênh lệch giữa các quận lớn đến mức nào?
--- Chart: Box Plot. Dimensions = quan, Distribute across = listing_key,
---        Metric = MAX(gia_m2_trieu), Row limit = 50000.
--- Q2.3b: bảng tứ phân vị, dùng chart Table hoặc Bar (median_gia_m2_trieu).
+-- Q7. Giá/m² nhà ở mỗi quận bao nhiêu?
+-- Chart: Bar Chart (ngang). X = quan, Metric = MAX(median_gia_m2_trieu), sắp giảm dần.
 -- -----------------------------------------------------------------------------
-SELECT
-    listing_key,
-    district                                                         AS quan,
-    area_zone                                                        AS khu_vuc,
-    round(price_per_m2 / 1e6, 1)                                     AS gia_m2_trieu
-FROM gold.ml_price_features
-WHERE property_category = 'HOUSE';
-
--- Q2.3b
 SELECT
     district                                                         AS quan,
-    area_zone                                                        AS khu_vuc,
-    count(*)                                                         AS so_tin,
-    round(percentile_approx(price_per_m2, 0.25) / 1e6, 1)            AS p25_gia_m2_trieu,
-    round(percentile_approx(price_per_m2, 0.5)  / 1e6, 1)            AS median_gia_m2_trieu,
-    round(percentile_approx(price_per_m2, 0.75) / 1e6, 1)            AS p75_gia_m2_trieu,
-    round(percentile_approx(price_vnd, 0.5) / 1e9, 2)                AS median_gia_ty
-FROM gold.ml_price_features
-WHERE property_category = 'HOUSE'
-GROUP BY district, area_zone
-HAVING count(*) >= 30
-ORDER BY median_gia_m2_trieu DESC;
-
-
--- -----------------------------------------------------------------------------
--- Q2.4. Khoảng cách nội thành - ngoại thành có giống nhau giữa các loại BĐS?
--- Chart: Bar Chart (grouped). X = loai_bds, Series = khu_vuc, Metric = MAX(median_gia_m2_trieu)
--- -----------------------------------------------------------------------------
-SELECT
-    property_type                                                    AS loai_bds,
-    area_zone                                                        AS khu_vuc,
     count(*)                                                         AS so_tin,
     round(percentile_approx(price_per_m2, 0.5) / 1e6, 1)             AS median_gia_m2_trieu
 FROM gold.ml_price_features
-WHERE area_zone <> 'Không rõ'
-GROUP BY property_type, area_zone
-HAVING count(*) >= 30
-ORDER BY loai_bds, khu_vuc;
+WHERE property_category = 'HOUSE'
+GROUP BY district
+HAVING count(*) >= 30;
+
+
+-- -----------------------------------------------------------------------------
+-- Q8. Giá của tin mới đăng thay đổi thế nào theo thời gian?
+-- Chart: Line Chart. X = tuan_dang, Series = loai_bds, Metric = MAX(median_gia_m2_trieu)
+-- Tính theo NGÀY ĐĂNG TIN: mỗi tin thuộc đúng một tuần, nên các tuần không
+-- chồng lên nhau (khác với tính theo ngày crawl, nơi một tin còn rao được đếm
+-- lại ở mọi tuần). Tin đăng tập trung từ 09/2026, trước đó gần như không có
+-- (tin hết hạn trước khi bắt đầu crawl), nên chỉ lấy từ 07/09/2026.
+-- Tuần cuối có thể thiếu tin vì tin mới đăng chưa kịp được crawl.
+-- -----------------------------------------------------------------------------
+SELECT
+    cast(date_trunc('week', posted_date) AS date)                    AS tuan_dang,
+    property_type                                                    AS loai_bds,
+    count(*)                                                         AS so_tin,
+    round(percentile_approx(price_per_m2, 0.5) / 1e6, 1)             AS median_gia_m2_trieu
+FROM gold.ml_price_features
+WHERE property_category IN ('HOUSE', 'APARTMENT', 'LAND')
+  AND posted_date >= '2026-09-07'   -- thứ Hai, để tuần đầu đủ 7 ngày
+GROUP BY 1, 2
+HAVING count(*) >= 30;
+
+
+-- -----------------------------------------------------------------------------
+-- Q9. Giá thuê mỗi quận bao nhiêu?
+-- Chart: Bar Chart (grouped). X = quan, Series = loai_bds,
+--        Metric = MAX(median_gia_thue_trieu_thang)
+-- -----------------------------------------------------------------------------
+SELECT
+    loc.district                                                     AS quan,
+    pt.property_type                                                 AS loai_bds,
+    count(*)                                                         AS so_tin,
+    round(percentile_approx(f.current_price_vnd, 0.5) / 1e6, 1)      AS median_gia_thue_trieu_thang
+FROM gold.fct_listing f
+JOIN gold.dim_location loc     ON f.location_key = loc.location_key
+JOIN gold.dim_property_type pt ON f.property_type_key = pt.property_type_key
+WHERE f.transaction_type = 'rent'
+  AND f.is_market_eligible
+  AND NOT f.is_price_outlier
+  AND pt.property_category IN ('HOUSE', 'APARTMENT', 'ROOM')
+  AND loc.district <> 'Không rõ'
+GROUP BY loc.district, pt.property_type
+HAVING count(*) >= 30;
 
 
 -- =============================================================================
--- 3. VÌ SAO ĐẮT / RẺ?
--- Các so sánh ở chương này là so sánh thô, chưa kiểm soát vị trí / diện tích:
--- dùng để gợi ý yếu tố ảnh hưởng giá (và feature cho mô hình), không phải nhân quả.
+-- PHẦN B. PHÂN TÍCH: VÌ SAO NHÀ ĐẮT / RẺ?
+-- Thứ tự: vị trí (Q7) -> diện tích (Q10) -> đặc điểm, pháp lý (Q11)
+--         -> số tầng (Q12).
+-- Vị trí và diện tích là hai yếu tố mạnh nhất, nên Q11 - Q12 so sánh nhà
+-- CÙNG QUẬN và CÙNG NHÓM DIỆN TÍCH, để chênh lệch còn lại là của chính yếu tố đó.
 -- =============================================================================
 
 -- -----------------------------------------------------------------------------
--- Q3.1. Giá/m² thay đổi thế nào khi diện tích tăng?
--- Chart: Line Chart. X = nhom_dien_tich, Series = nhom_bds,
+-- Q10. Diện tích càng lớn thì giá/m² cao hay thấp hơn?
+-- Chart: Line Chart. X = nhom_dien_tich, Series = loai_bds,
 --        Metric = MAX(median_gia_m2_trieu)
 -- -----------------------------------------------------------------------------
 SELECT
@@ -208,344 +209,112 @@ SELECT
         WHEN area_m2 < 200 THEN '5. 120–200 m²'
         ELSE                    '6. ≥ 200 m²'
     END                                                              AS nhom_dien_tich,
-    property_type                                                    AS nhom_bds,
+    property_type                                                    AS loai_bds,
     count(*)                                                         AS so_tin,
-    round(percentile_approx(price_per_m2, 0.5) / 1e6, 1)             AS median_gia_m2_trieu,
-    round(percentile_approx(price_vnd, 0.5) / 1e9, 2)                AS median_gia_ty
+    round(percentile_approx(price_per_m2, 0.5) / 1e6, 1)             AS median_gia_m2_trieu
 FROM gold.ml_price_features
 WHERE property_category IN ('HOUSE', 'APARTMENT', 'LAND')
 GROUP BY 1, 2
-HAVING count(*) >= 30
-ORDER BY nhom_bds, nhom_dien_tich;
+HAVING count(*) >= 30;
 
 
 -- -----------------------------------------------------------------------------
--- Q3.2. Đặc điểm nào làm giá/m² nhà ở cao hơn (hoặc thấp hơn)?
--- Chart: Bar Chart. X = dac_diem, Metric = MAX(chenh_lech_pct), sắp xếp giảm dần.
--- chenh_lech_pct = median nhóm "có" so với median nhóm "không", tính bằng %.
--- Pháp lý tách riêng ở Q3.3 vì has_certificate gộp "Không rõ" vào "không có sổ".
+-- Q11. Đặc điểm và pháp lý nào làm nhà ở đắt hơn?
+-- Chart: Bar Chart (ngang). X = dac_diem,
+--        Metrics = MAX(chenh_lech_tho_pct), MAX(chenh_lech_cung_quan_dt_pct).
+-- chenh_lech_tho_pct:         so mọi nhà "có" với mọi nhà "không".
+-- chenh_lech_cung_quan_dt_pct: chỉ so nhà cùng quận, cùng nhóm diện tích, rồi
+--                              lấy trung bình các nhóm (trọng số = số tin "có").
+-- Hai cột lệch nhau nhiều = phần lớn chênh lệch thô là do vị trí / diện tích.
 -- -----------------------------------------------------------------------------
 WITH flags AS (
-    SELECT price_per_m2, dac_diem, co_dac_diem
+    SELECT
+        district,
+        CASE
+            WHEN area_m2 < 30  THEN 1
+            WHEN area_m2 < 50  THEN 2
+            WHEN area_m2 < 80  THEN 3
+            WHEN area_m2 < 120 THEN 4
+            WHEN area_m2 < 200 THEN 5
+            ELSE                    6
+        END                                                          AS nhom_dt,
+        price_per_m2,
+        dac_diem,
+        co
     FROM gold.ml_price_features
-    LATERAL VIEW stack(6,
+    LATERAL VIEW stack(7,
         'Mặt tiền',            is_frontage,
         'Hẻm xe hơi',          has_car_alley,
         'Nở hậu',              is_wide_back,
         'Thuộc dự án',         is_in_project,
         'Nhà nát / xuống cấp', is_dilapidated,
-        'Dính quy hoạch',      is_planning_affected
-    ) t AS dac_diem, co_dac_diem
+        'Dính quy hoạch',      is_planning_affected,
+        'Có sổ',               CASE WHEN legal_category <> 'Không rõ'
+                                    THEN legal_category = 'Có sổ' END
+    ) t AS dac_diem, co
     WHERE property_category = 'HOUSE'
-      AND co_dac_diem IS NOT NULL
+      AND co IS NOT NULL
 ),
 
-by_flag AS (
+raw AS (
     SELECT
         dac_diem,
-        count(CASE WHEN co_dac_diem THEN 1 END)                                 AS so_tin_co,
-        count(CASE WHEN NOT co_dac_diem THEN 1 END)                             AS so_tin_khong,
-        percentile_approx(CASE WHEN co_dac_diem THEN price_per_m2 END, 0.5)     AS median_co,
-        percentile_approx(CASE WHEN NOT co_dac_diem THEN price_per_m2 END, 0.5) AS median_khong
+        count(CASE WHEN co THEN 1 END)                               AS so_tin_co,
+        percentile_approx(CASE WHEN co THEN price_per_m2 END, 0.5)
+          / percentile_approx(CASE WHEN NOT co THEN price_per_m2 END, 0.5) - 1 AS tho
     FROM flags
+    GROUP BY dac_diem
+),
+
+cells AS (
+    -- Mỗi ô = một quận x một nhóm diện tích, cần đủ tin ở cả hai phía.
+    SELECT
+        dac_diem,
+        count(CASE WHEN co THEN 1 END)                               AS n_co,
+        percentile_approx(CASE WHEN co THEN price_per_m2 END, 0.5)
+          / percentile_approx(CASE WHEN NOT co THEN price_per_m2 END, 0.5) - 1 AS chenh
+    FROM flags
+    GROUP BY dac_diem, district, nhom_dt
+    HAVING count(CASE WHEN co THEN 1 END) >= 5
+       AND count(CASE WHEN NOT co THEN 1 END) >= 5
+),
+
+controlled AS (
+    SELECT dac_diem, sum(chenh * n_co) / sum(n_co) AS cung_quan_dt
+    FROM cells
     GROUP BY dac_diem
 )
 
 SELECT
-    dac_diem,
-    so_tin_co,
-    so_tin_khong,
-    round(median_co / 1e6, 1)                                        AS median_co_trieu,
-    round(median_khong / 1e6, 1)                                     AS median_khong_trieu,
-    round((median_co - median_khong) / median_khong * 100, 1)        AS chenh_lech_pct
-FROM by_flag
-WHERE so_tin_co >= 30
-  AND so_tin_khong >= 30
-ORDER BY chenh_lech_pct DESC;
+    r.dac_diem,
+    r.so_tin_co,
+    round(r.tho * 100, 1)                                            AS chenh_lech_tho_pct,
+    round(c.cung_quan_dt * 100, 1)                                   AS chenh_lech_cung_quan_dt_pct
+FROM raw r
+JOIN controlled c ON r.dac_diem = c.dac_diem
+WHERE r.so_tin_co >= 30;
 
 
 -- -----------------------------------------------------------------------------
--- Q3.3. Pháp lý ảnh hưởng đến giá/m² thế nào?
--- Chart: Bar Chart (grouped). X = phap_ly, Series = nhom_bds,
---        Metric = MAX(median_gia_m2_trieu). Bỏ nhóm "Không rõ" để không lẫn.
+-- Q12. Cùng diện tích, nhà nhiều tầng hơn thì đắt hơn bao nhiêu?
+-- Chart: Line Chart. X = so_tang, Series = nhom_dien_tich,
+--        Metric = MAX(median_gia_ty). Filter khu_vuc (Nội thành / Ngoại thành).
+-- Mỗi đường là một nhóm diện tích, nên độ dốc của đường là ảnh hưởng của số tầng.
 -- -----------------------------------------------------------------------------
 SELECT
-    legal_category                                                   AS phap_ly,
-    property_type                                                    AS nhom_bds,
+    least(total_floors, 6)                                           AS so_tang,   -- 6 = từ 6 tầng
+    CASE
+        WHEN area_m2 < 50  THEN '1. < 50 m²'
+        WHEN area_m2 < 80  THEN '2. 50–80 m²'
+        WHEN area_m2 < 120 THEN '3. 80–120 m²'
+        ELSE                    '4. ≥ 120 m²'
+    END                                                              AS nhom_dien_tich,
+    area_zone                                                        AS khu_vuc,
     count(*)                                                         AS so_tin,
-    round(percentile_approx(price_per_m2, 0.5) / 1e6, 1)             AS median_gia_m2_trieu
+    round(percentile_approx(price_vnd, 0.5) / 1e9, 2)                AS median_gia_ty
 FROM gold.ml_price_features
-WHERE property_category IN ('HOUSE', 'LAND')
-  AND legal_category <> 'Không rõ'
-GROUP BY legal_category, property_type
-HAVING count(*) >= 30
-ORDER BY nhom_bds, median_gia_m2_trieu DESC;
-
-
--- =============================================================================
--- 4. THỊ TRƯỜNG ĐANG ĐI VỀ ĐÂU?
--- Q4.1 dùng mart theo tuần (đã khử trùng tin crawl nhiều lần trong tuần).
--- Q4.2, Q4.3 tính theo ngày crawl từ fct_listing_event để có số liệu ngay cả khi
--- lịch sử còn ngắn; khi dữ liệu dài ra, đặt Time grain = Week / Month trong
--- Superset để gộp. Ngày / tuần cuối có thể chưa crawl xong.
--- =============================================================================
-
--- -----------------------------------------------------------------------------
--- Q4.1. Giá/m² đang tăng hay giảm? (toàn thành phố, nội thành, ngoại thành)
--- Chart: Line Chart. X = tuan, Series = khu_vuc, Metric = MAX(median_gia_m2_trieu).
---        Thêm filter loai_bds (mặc định "Nhà ở") để so cùng loại.
--- -----------------------------------------------------------------------------
-SELECT
-    period_start                                                     AS tuan,
-    geo_name                                                         AS khu_vuc,
-    property_type                                                    AS loai_bds,
-    listing_count                                                    AS so_tin,
-    round(p25_price_per_m2 / 1e6, 1)                                 AS p25_gia_m2_trieu,
-    round(median_price_per_m2 / 1e6, 1)                              AS median_gia_m2_trieu,
-    round(p75_price_per_m2 / 1e6, 1)                                 AS p75_gia_m2_trieu,
-    round(median_price_per_m2_change_pct, 2)                         AS thay_doi_so_voi_tuan_truoc_pct
-FROM gold.agg_price_trend_weekly
-WHERE transaction_type = 'sale'
-  AND geo_level IN ('CITY', 'ZONE')
-  AND geo_name <> 'Không rõ'
-  AND property_category IN ('HOUSE', 'APARTMENT', 'LAND')
-  AND is_reliable
-ORDER BY loai_bds, khu_vuc, tuan;
-
-
--- -----------------------------------------------------------------------------
--- Q4.2. Nguồn cung đang phình ra hay co lại? (tin mới so với tin bị gỡ)
--- Chart: Mixed Chart. X = ngay. Bar = so_tin_moi, so_tin_go; Line = so_tin_dang_rao.
---        Filter giao_dich.
--- Tin của lần crawl đầu tiên đã có sẵn trên thị trường (is_initial_load) nên
--- không tính là tin mới.
--- -----------------------------------------------------------------------------
-WITH active AS (
-    SELECT
-        crawl_date                                                   AS ngay,
-        transaction_type,
-        count(DISTINCT listing_key)                                  AS so_tin_dang_rao
-    FROM gold.fct_listing_snapshot
-    WHERE is_market_eligible
-    GROUP BY crawl_date, transaction_type
-),
-
-flows AS (
-    SELECT
-        to_date(event_at)                                            AS ngay,
-        transaction_type,
-        count(DISTINCT CASE WHEN event_type = 'NEW' AND NOT is_initial_load
-                            THEN listing_key END)                    AS so_tin_moi,
-        count(DISTINCT CASE WHEN event_type = 'REMOVED'
-                            THEN listing_key END)                    AS so_tin_go
-    FROM gold.fct_listing_event
-    WHERE is_market_eligible
-    GROUP BY to_date(event_at), transaction_type
-)
-
-SELECT
-    a.ngay,
-    CASE a.transaction_type WHEN 'sale' THEN 'Bán' ELSE 'Cho thuê' END AS giao_dich,
-    a.so_tin_dang_rao,
-    coalesce(f.so_tin_moi, 0)                                        AS so_tin_moi,
-    coalesce(f.so_tin_go, 0)                                         AS so_tin_go,
-    coalesce(f.so_tin_moi, 0) - coalesce(f.so_tin_go, 0)             AS cung_rong
-FROM active a
-LEFT JOIN flows f
-    ON a.ngay = f.ngay
-   AND a.transaction_type = f.transaction_type
-ORDER BY a.ngay, giao_dich;
-
-
--- -----------------------------------------------------------------------------
--- Q4.3. Người bán có đang phải giảm giá nhiều hơn?
--- Chart: Line Chart (2 trục). X = ngay, Series = loai_bds,
---        Metric = MAX(ty_le_tin_giam_gia_pct), trục phụ MAX(muc_giam_median_pct).
--- -----------------------------------------------------------------------------
-WITH active AS (
-    SELECT
-        s.crawl_date                                                 AS ngay,
-        pt.property_type                                             AS loai_bds,
-        count(DISTINCT s.listing_key)                                AS so_tin_dang_rao
-    FROM gold.fct_listing_snapshot s
-    JOIN gold.dim_property_type pt ON s.property_type_key = pt.property_type_key
-    WHERE s.transaction_type = 'sale'
-      AND s.is_market_eligible
-      AND pt.property_category IN ('HOUSE', 'APARTMENT', 'LAND')
-    GROUP BY s.crawl_date, pt.property_type
-),
-
-cuts AS (
-    SELECT
-        to_date(e.event_at)                                          AS ngay,
-        pt.property_type                                             AS loai_bds,
-        count(DISTINCT e.listing_key)                                AS so_tin_giam_gia,
-        percentile_approx(e.price_change_pct, 0.5)                   AS median_change_pct
-    FROM gold.fct_listing_event e
-    JOIN gold.dim_property_type pt ON e.property_type_key = pt.property_type_key
-    WHERE e.transaction_type = 'sale'
-      AND e.is_market_eligible
-      AND NOT e.is_price_outlier
-      AND e.is_price_decrease
-    GROUP BY to_date(e.event_at), pt.property_type
-)
-
-SELECT
-    a.ngay,
-    a.loai_bds,
-    a.so_tin_dang_rao,
-    coalesce(c.so_tin_giam_gia, 0)                                   AS so_tin_giam_gia,
-    round(coalesce(c.so_tin_giam_gia, 0) * 100.0 / a.so_tin_dang_rao, 2) AS ty_le_tin_giam_gia_pct,
-    round(-c.median_change_pct, 1)                                   AS muc_giam_median_pct
-FROM active a
-LEFT JOIN cuts c
-    ON a.ngay = c.ngay
-   AND a.loai_bds = c.loai_bds
-WHERE a.so_tin_dang_rao >= 100
-ORDER BY a.loai_bds, a.ngay;
-
-
--- -----------------------------------------------------------------------------
--- Q4.4. Phân khúc nào giảm giá nhiều nhất? (cộng dồn từ lúc bắt đầu theo dõi)
--- Chart: Heatmap. X = khu_vuc, Y = loai_bds, Metric = MAX(ty_le_tin_da_giam_pct);
---        tooltip muc_giam_median_pct.
--- -----------------------------------------------------------------------------
-SELECT
-    loc.area_zone                                                    AS khu_vuc,
-    pt.property_type                                                 AS loai_bds,
-    count(*)                                                         AS so_tin,
-    round(avg(CASE WHEN f.total_price_change_pct < 0 THEN 1.0 ELSE 0.0 END) * 100, 2)
-                                                                     AS ty_le_tin_da_giam_pct,
-    round(-percentile_approx(CASE WHEN f.total_price_change_pct < 0
-                                  THEN f.total_price_change_pct END, 0.5), 1)
-                                                                     AS muc_giam_median_pct
-FROM gold.fct_listing f
-JOIN gold.dim_location loc     ON f.location_key = loc.location_key
-JOIN gold.dim_property_type pt ON f.property_type_key = pt.property_type_key
-WHERE f.transaction_type = 'sale'
-  AND f.is_market_eligible
-  AND NOT f.is_price_outlier
-  AND loc.area_zone <> 'Không rõ'
-GROUP BY loc.area_zone, pt.property_type
-HAVING count(*) >= 30
-ORDER BY ty_le_tin_da_giam_pct DESC;
-
-
--- =============================================================================
--- 5. BÁN CÓ DỄ KHÔNG, THUÊ THÌ SAO?
--- =============================================================================
-
--- -----------------------------------------------------------------------------
--- Q5.1. Phân khúc nào rời thị trường nhanh nhất? (tin bán, theo quận x loại BĐS)
--- Chart: Heatmap. X = quan, Y = loai_bds, Metric = MAX(ty_le_go_moi_tuan_pct)
--- ty_le_go_moi_tuan_pct = tổng tin gỡ / tổng tin đang rao, cộng qua các tuần.
--- Tính theo tuần thay vì "% tin đã gỡ" để tin xuất hiện muộn (ít thời gian bị gỡ)
--- không kéo tỷ lệ xuống.
--- Lưu ý: tin bị gỡ chỉ là proxy cho giao dịch (có thể hết hạn, rút tin, crawl sót).
--- -----------------------------------------------------------------------------
-WITH weekly AS (
-    SELECT
-        geo_name                                                     AS quan,
-        property_type                                                AS loai_bds,
-        sum(active_listing_count)                                    AS tin_tuan,
-        sum(removed_listing_count)                                   AS so_tin_go
-    FROM gold.agg_market_supply_weekly
-    WHERE geo_level = 'DISTRICT'
-      AND transaction_type = 'sale'
-      AND geo_name <> 'Không rõ'
-    GROUP BY geo_name, property_type
-),
-
-days_on_market AS (
-    SELECT
-        loc.district                                                 AS quan,
-        pt.property_type                                             AS loai_bds,
-        percentile_approx(f.days_on_market, 0.5)                     AS median_ngay_rao_khi_go
-    FROM gold.fct_listing f
-    JOIN gold.dim_location loc     ON f.location_key = loc.location_key
-    JOIN gold.dim_property_type pt ON f.property_type_key = pt.property_type_key
-    WHERE f.transaction_type = 'sale'
-      AND f.is_market_eligible
-      AND NOT f.is_active
-    GROUP BY loc.district, pt.property_type
-)
-
-SELECT
-    w.quan,
-    w.loai_bds,
-    w.tin_tuan,
-    w.so_tin_go,
-    round(w.so_tin_go * 100.0 / w.tin_tuan, 2)                       AS ty_le_go_moi_tuan_pct,
-    d.median_ngay_rao_khi_go
-FROM weekly w
-LEFT JOIN days_on_market d
-    ON w.quan = d.quan AND w.loai_bds = d.loai_bds
-WHERE w.tin_tuan >= 100
-ORDER BY ty_le_go_moi_tuan_pct DESC;
-
-
--- -----------------------------------------------------------------------------
--- Q5.2. Giá thuê ở mỗi quận bao nhiêu?
--- Chart: Bar Chart (grouped). X = quan, Series = loai_bds,
---        Metric = MAX(median_gia_thue_trieu_thang)
--- -----------------------------------------------------------------------------
-SELECT
-    loc.district                                                     AS quan,
-    loc.area_zone                                                    AS khu_vuc,
-    pt.property_type                                                 AS loai_bds,
-    count(*)                                                         AS so_tin,
-    round(percentile_approx(f.current_price_vnd, 0.5) / 1e6, 1)      AS median_gia_thue_trieu_thang,
-    round(percentile_approx(f.current_price_per_m2, 0.5) / 1e3, 0)   AS median_gia_thue_nghin_m2_thang
-FROM gold.fct_listing f
-JOIN gold.dim_location loc     ON f.location_key = loc.location_key
-JOIN gold.dim_property_type pt ON f.property_type_key = pt.property_type_key
-WHERE f.transaction_type = 'rent'
-  AND f.is_market_eligible
-  AND NOT f.is_price_outlier
-  AND pt.property_category IN ('HOUSE', 'APARTMENT', 'ROOM')
-  AND loc.district <> 'Không rõ'
-GROUP BY loc.district, loc.area_zone, pt.property_type
-HAVING count(*) >= 30
-ORDER BY loai_bds, median_gia_thue_trieu_thang DESC;
-
-
--- -----------------------------------------------------------------------------
--- Q5.3. Mua để cho thuê thì ở đâu lời hơn? (tỷ suất cho thuê gộp theo năm)
--- Chart: Bar Chart (ngang). X = quan, Series = loai_bds, Metric = MAX(ty_suat_thue_nam_pct)
--- ty_suat_thue_nam_pct = median giá thuê/m²/tháng * 12 / median giá bán/m² * 100.
--- Hai median lấy từ hai tập tin khác nhau (tin thuê và tin bán cùng quận, cùng
--- loại), nên chỉ là chỉ báo tham khảo, không phải lợi suất thực của một căn.
--- -----------------------------------------------------------------------------
-WITH by_segment AS (
-    SELECT
-        loc.district                                                 AS quan,
-        pt.property_type                                             AS loai_bds,
-        f.transaction_type,
-        count(*)                                                     AS so_tin,
-        percentile_approx(f.current_price_per_m2, 0.5)               AS median_gia_m2
-    FROM gold.fct_listing f
-    JOIN gold.dim_location loc     ON f.location_key = loc.location_key
-    JOIN gold.dim_property_type pt ON f.property_type_key = pt.property_type_key
-    WHERE f.is_market_eligible
-      AND NOT f.is_price_outlier
-      AND pt.property_category IN ('HOUSE', 'APARTMENT')
-      AND loc.district <> 'Không rõ'
-    GROUP BY loc.district, pt.property_type, f.transaction_type
-    HAVING count(*) >= 30
-)
-
-SELECT
-    s.quan,
-    s.loai_bds,
-    s.so_tin                                                         AS so_tin_ban,
-    r.so_tin                                                         AS so_tin_thue,
-    round(s.median_gia_m2 / 1e6, 1)                                  AS median_gia_ban_m2_trieu,
-    round(r.median_gia_m2 / 1e3, 0)                                  AS median_gia_thue_m2_nghin_thang,
-    round(r.median_gia_m2 * 12 / s.median_gia_m2 * 100, 2)           AS ty_suat_thue_nam_pct
-FROM by_segment s
-JOIN by_segment r
-    ON s.quan = r.quan
-   AND s.loai_bds = r.loai_bds
-   AND r.transaction_type = 'rent'
-WHERE s.transaction_type = 'sale'
-ORDER BY ty_suat_thue_nam_pct DESC;
+WHERE property_category = 'HOUSE'
+  AND total_floors >= 1
+  AND area_zone <> 'Không rõ'
+GROUP BY 1, 2, 3
+HAVING count(*) >= 30;

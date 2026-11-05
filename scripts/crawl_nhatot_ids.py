@@ -74,6 +74,10 @@ def crawl_scope(scope):
                 "cg": 1000,
                 "region_v2": 13000,
                 "area_v2": area_v2,
+                # Filter by type server-side: each scope then pages through its
+                # own listings only, so MAX_OFFSET caps sale and rent separately
+                # and no page is fetched twice.
+                "st": listing_type,
                 "o": offset,
                 "limit": PAGE_LIMIT,
             }

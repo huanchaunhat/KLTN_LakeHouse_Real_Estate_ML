@@ -112,7 +112,7 @@ Nhãn cũ vẫn đọc/chấm/xuất được sau khi cập nhật model vì m�
 
 ## 6. Dùng demo và API
 
-Trên web: chọn sale/rent → chọn tìm theo nhu cầu hoặc tin tương tự → với tìm theo nhu cầu, chọn tỉnh/thành rồi quận/huyện (hoặc tất cả) → tìm kết quả → nhập người chấm, split và K → tạo phiếu → chọn điểm từng tin và bấm **Lưu nhãn** → chấm đủ → xuất JSONL/CSV hoặc xem chỉ số của phiếu. Thứ tự ứng viên trong phiếu được xáo và ẩn điểm model. Nhãn để trống khác 0; ghi đồng thời trên cùng phiếu có kiểm tra version để tránh mất dữ liệu.
+Trên web: nhập mã tin, link hoặc từ khóa để tự điền tiêu chí và gợi ý tin tương tự, hoặc tự chọn tiêu chí để gợi ý theo nhu cầu (chi tiết ở [WEB_DEMO_TRA_CUU_VA_DU_DOAN_GIA.md](WEB_DEMO_TRA_CUU_VA_DU_DOAN_GIA.md)) → sang tab Chấm nhãn, nhập người chấm, split và K → tạo phiếu → chọn điểm từng tin và bấm **Lưu nhãn** → chấm đủ → xuất JSONL/CSV hoặc xem chỉ số của phiếu. Thứ tự ứng viên trong phiếu được xáo và ẩn điểm model. Nhãn để trống khác 0; ghi đồng thời trên cùng phiếu có kiểm tra version để tránh mất dữ liệu.
 
 Các endpoint chính:
 
@@ -120,12 +120,15 @@ Các endpoint chính:
 |---|---|
 | `GET /health`, `/model` | Trạng thái, model version và thông tin dữ liệu |
 | `GET /filters`, `/catalog` | Danh sách tỉnh/thành và quận/huyện theo thị trường, tìm tin gốc |
+| `GET /listing?id=` | Tra một tin theo `listing_key`, mã nguồn hoặc link |
+| `GET /listing/live?id=` | Lấy trực tiếp từ Nhà Tốt một tin chưa có trong dữ liệu (link hoặc mã số), bóc tách theo cùng quy tắc với `stg_nhatot_properties`; không ghi vào lakehouse |
 | `POST /recommend` | `method=similar` hoặc `preferences` |
 | `POST /tasks`, `GET /tasks` | Tạo và liệt kê phiếu |
 | `GET/PATCH /tasks/{id}` | Đọc phiếu và lưu nhãn |
 | `GET /tasks/{id}/metrics` | Metric của phiếu đã chấm đủ, cùng model |
 | `GET /export?task_id=...&format=jsonl` | Xuất nhãn cho CLI đánh giá |
 | `POST /admin/reload` | Nạp version; cần `X-Admin-Token` |
+| `GET /price/model`, `/price/options`, `POST /price/predict` | Chuyển tiếp sang API giá ở `fastapi:8000` |
 
 Ví dụ nhu cầu thuê:
 

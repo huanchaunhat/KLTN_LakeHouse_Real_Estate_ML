@@ -21,7 +21,8 @@ MODEL_NAME = os.getenv("MODEL_NAME", "price_model")
 MODEL_ALIAS = os.getenv("MODEL_ALIAS", "champion")
 WEB_PAGE = os.path.join(os.path.dirname(__file__), "static", "index.html")
 
-app = FastAPI(title="Real estate price API")
+# Hide the "Schemas" section at the bottom of Swagger UI.
+app = FastAPI(title="Real estate price API", swagger_ui_parameters={"defaultModelsExpandDepth": -1})
 _lock = Lock()
 _state = {}
 

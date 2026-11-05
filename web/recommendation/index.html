@@ -1,80 +1,953 @@
 <!doctype html>
-<html lang="vi"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
 <title>REIP · Gợi ý bất động sản</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
-*{box-sizing:border-box}body{font:15px/1.6 system-ui,sans-serif;background:#f4f7fa;color:#172d3e;margin:0}main{max-width:1140px;margin:auto;padding:30px 20px}h1{margin:0;font-size:30px}h2{font-size:21px}small,.muted{color:#5b6b77}header{margin-bottom:24px}section{background:white;border:1px solid #dce5eb;border-radius:12px;padding:22px;margin:18px 0}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:14px}label{display:block;font-size:13px;font-weight:600}input,select,button,textarea{font:inherit;border:1px solid #c8d4dd;border-radius:7px;padding:9px;width:100%;background:white;color:inherit}button{cursor:pointer;background:#0e6677;color:white;border:0;width:auto;padding:10px 18px}button.secondary{background:#e7f0f3;color:#174652}button:disabled{opacity:.5;cursor:wait}.row{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin:14px 0}.card{border-top:1px solid #e5ebef;padding:16px 0}.card h3{font-size:17px;margin:3px 0}.tag{background:#e5f3ee;color:#1c6954;padding:3px 8px;border-radius:4px;font-size:12px}a{color:#086579}.error{color:#ad3030;white-space:pre-wrap}#notice{position:sticky;top:0;background:#fff4d9;padding:10px;z-index:2;display:none}.hidden{display:none}pre{white-space:pre-wrap;word-break:break-word;font:12px/1.5 monospace}.grade{max-width:300px}.hint{background:#f1f6f8;padding:12px;border-radius:8px}summary{cursor:pointer}
+:root{
+  --paper:#f6f3ec;--surface:#fffdf9;--sunken:#efebe1;--line:#e0dacc;--line-strong:#c9c1ae;
+  --ink:#1b2b2a;--muted:#5f6d69;--faint:#8a938d;
+  --pine:#0f4c45;--pine-deep:#0a3631;--pine-soft:#dfece7;--mint:#a9dcc9;
+  --clay:#b8532f;--clay-soft:#f8e6dc;--up:#a64425;--down:#1b7a5c;--danger:#a32d2d;
+  --radius:14px;--shadow:0 1px 2px rgba(27,43,42,.05),0 8px 24px -14px rgba(27,43,42,.22);
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--paper);color:var(--ink);font:15px/1.55 "Be Vietnam Pro",system-ui,-apple-system,"Segoe UI",sans-serif;-webkit-font-smoothing:antialiased}
+h1,h2,h3,p{margin:0}
+a{color:var(--pine);text-underline-offset:2px}
+.hidden{display:none!important}
+.num{font-variant-numeric:tabular-nums}
+:focus-visible{outline:2px solid var(--clay);outline-offset:2px}
+
+/* Top bar */
+.topbar{background:var(--pine-deep);color:#eaf3ef}
+.topbar-in{max-width:1200px;margin:auto;padding:12px 24px;display:flex;align-items:center;gap:28px;flex-wrap:wrap}
+.brand{font-weight:700;font-size:17px;letter-spacing:.02em;color:#fff;text-decoration:none}
+.brand span{color:var(--mint);font-weight:500;margin-left:6px;font-size:13px}
+.tabs{display:flex;gap:4px;flex:1;flex-wrap:wrap}
+.tabs a{color:#bcd4cc;text-decoration:none;padding:6px 12px;border-radius:8px;font-size:14px;font-weight:500}
+.tabs a:hover{color:#fff;background:rgba(255,255,255,.07)}
+.tabs a[aria-current=page]{background:rgba(255,255,255,.13);color:#fff}
+.topbar-side{display:flex;align-items:center;gap:14px;font-size:12.5px;color:#a8c4bb}
+.topbar-side a{color:#a8c4bb}
+.dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--faint);margin-right:6px;vertical-align:1px}
+.dot.ok{background:#5fd3a8}.dot.bad{background:#e8815f}
+
+/* Hero: the listing id is the page's main entry point */
+.hero{background:var(--pine-deep);color:#fff;padding:26px 24px 72px}
+.hero-in{max-width:820px;margin:auto;text-align:center}
+.hero h1{font-size:clamp(25px,4vw,36px);line-height:1.2;font-weight:700;letter-spacing:-.015em}
+.hero p{color:#bcd4cc;margin-top:10px}
+.lookup{display:flex;gap:8px;background:var(--surface);padding:7px;border-radius:14px;margin-top:22px;box-shadow:0 14px 34px -14px rgba(0,0,0,.55)}
+.lookup input{flex:1;min-width:0;border:0;background:transparent;font-size:16px;padding:9px 12px;color:var(--ink)}
+.lookup input:focus{outline:none}
+.lookup:focus-within{box-shadow:0 0 0 3px var(--mint),0 14px 34px -14px rgba(0,0,0,.55)}
+.samples{margin-top:13px;font-size:13px;color:#a8c4bb;display:flex;gap:8px;justify-content:center;align-items:center;flex-wrap:wrap;min-height:28px}
+.chip-btn{background:rgba(255,255,255,.1);color:#e5f1ec;border:0;padding:3px 11px;border-radius:999px;font:inherit;font-size:12.5px;cursor:pointer}
+.chip-btn:hover{background:rgba(255,255,255,.2)}
+.lookup.on-light{margin:0;border:1px solid var(--line-strong);box-shadow:none}
+.lookup.on-light:focus-within{border-color:var(--pine);box-shadow:0 0 0 3px var(--pine-soft)}
+.samples.on-light{justify-content:flex-start;color:var(--muted);margin-bottom:6px}
+.on-light .chip-btn{background:var(--sunken);color:var(--ink)}.on-light .chip-btn:hover{background:var(--line)}
+.picks.on-light{border:1px solid var(--line);box-shadow:none}
+.seed.on-light{margin:12px 0 18px;box-shadow:none}
+.picks{margin-top:10px;background:var(--surface);color:var(--ink);border-radius:12px;text-align:left;overflow:hidden;box-shadow:var(--shadow)}
+.picks-head{padding:10px 16px;font-size:13px;color:var(--muted);border-bottom:1px solid var(--line)}
+.pick{display:flex;gap:12px;justify-content:space-between;align-items:baseline;width:100%;background:none;border:0;border-bottom:1px solid var(--line);padding:10px 16px;font:inherit;color:inherit;text-align:left;cursor:pointer}
+.pick:last-child{border-bottom:0}
+.pick:hover{background:var(--sunken)}
+.pick small{color:var(--muted);white-space:nowrap}
+
+/* Layout */
+main{max-width:1200px;margin:auto;padding:0 24px 56px}
+.discover{display:grid;grid-template-columns:350px minmax(0,1fr);gap:22px;margin-top:-46px;align-items:start}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow)}
+.criteria{padding:20px;position:sticky;top:14px;max-height:calc(100vh - 28px);overflow:auto}
+.panel-title{font-size:16px;font-weight:600}
+.page{margin-top:26px}
+.page>.panel{padding:24px;margin-bottom:18px}
+.page h2{font-size:22px;font-weight:700;letter-spacing:-.01em}
+.page-lead{color:var(--muted);margin:4px 0 20px;max-width:720px}
+
+/* Form */
+.fields{display:grid;grid-template-columns:1fr 1fr;gap:13px 11px;margin-top:15px;align-items:end}
+.fields .wide{grid-column:1/-1}
+.form-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:14px}
+label{display:block;font-size:12.5px;font-weight:500;color:var(--muted)}
+input,select,textarea{display:block;font:inherit;font-size:14px;color:var(--ink);width:100%;background:var(--surface);border:1px solid var(--line-strong);border-radius:9px;padding:8px 10px;margin-top:4px;transition:border-color .15s,background .3s}
+input:focus,select:focus{outline:none;border-color:var(--pine);box-shadow:0 0 0 3px var(--pine-soft)}
+select:disabled,input:disabled{background:var(--sunken);color:var(--faint)}
+input[type=checkbox]{display:inline;width:auto;margin:0 6px 0 0;accent-color:var(--pine)}
+.check{display:inline-flex;align-items:center;font-size:14px;color:var(--ink);font-weight:400}
+.filled input,.filled select{background:var(--pine-soft);border-color:#a6c9bc}
+.tag-auto{display:none;width:6px;height:6px;border-radius:50%;background:var(--pine);margin-left:5px;vertical-align:2px}
+.filled .tag-auto{display:inline-block}
+.group-label{grid-column:1/-1;font-size:11.5px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--faint);margin-top:5px;padding-top:12px;border-top:1px solid var(--line)}
+.segment{display:grid;grid-template-columns:1fr 1fr;background:var(--sunken);border-radius:10px;padding:3px;margin-top:4px}
+.segment button{background:none;border:0;padding:6px;border-radius:8px;font:inherit;font-size:13.5px;font-weight:500;color:var(--muted);cursor:pointer}
+.segment button[aria-pressed=true]{background:var(--surface);color:var(--pine);font-weight:600;box-shadow:0 1px 2px rgba(0,0,0,.12)}
+.filled .segment{background:var(--pine-soft)}
+
+/* Buttons */
+button{font-family:inherit}
+.btn{border:0;border-radius:10px;background:var(--pine);color:#fff;padding:9px 18px;font:inherit;font-weight:600;font-size:14px;cursor:pointer;white-space:nowrap;transition:background .15s}
+.btn:hover{background:var(--pine-deep)}
+.btn:disabled{opacity:.55;cursor:wait}
+.btn.accent{background:var(--clay)}.btn.accent:hover{background:#9c4425}
+.btn.ghost{background:var(--pine-soft);color:var(--pine)}.btn.ghost:hover{background:#cfe2db}
+.btn.block{width:100%;margin-top:16px;padding:11px}
+.link-btn{background:none;border:0;padding:0;font:inherit;font-size:13px;color:var(--pine);text-decoration:underline;text-underline-offset:2px;cursor:pointer}
+.row{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-top:16px}
+
+/* Search-mode explanation */
+.mode{margin-top:13px;padding:10px 12px;border-radius:10px;font-size:13px;line-height:1.45;background:var(--sunken);color:var(--muted)}
+.mode strong{display:block;color:var(--ink);font-weight:600}
+.mode.seeded{background:var(--pine-soft);color:#2f5a50}.mode.seeded strong{color:var(--pine)}
+.mode.edited{background:var(--clay-soft);color:#7d4128}.mode.edited strong{color:var(--clay)}
+.mode .row{margin-top:6px;gap:14px}
+
+/* Seed listing */
+.seed{padding:20px 22px;margin-bottom:18px;border-left:4px solid var(--pine)}
+.eyebrow{font-size:11.5px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--pine)}
+.seed h2{font-size:19px;font-weight:600;line-height:1.35;margin-top:3px}
+.seed-top{display:flex;justify-content:space-between;gap:20px;align-items:flex-start}
+.seed-price{text-align:right;flex:none}
+.price{font-size:21px;font-weight:700;color:var(--clay);white-space:nowrap}
+.price small{font-size:13px;font-weight:500;color:var(--muted)}
+.facts{display:grid;grid-template-columns:repeat(auto-fit,minmax(125px,1fr));gap:12px 18px;margin-top:15px;padding-top:14px;border-top:1px solid var(--line)}
+.fact small{display:block;font-size:11.5px;color:var(--faint)}
+.fact span{font-size:13.5px;font-weight:500}
+
+/* Results */
+.results-head{display:flex;justify-content:space-between;align-items:baseline;gap:12px;flex-wrap:wrap;margin:0 0 11px 2px}
+.results-head h2{font-size:17px;font-weight:600}
+.results-head small{color:var(--muted)}
+.list{display:grid;gap:11px}
+.item{padding:16px 18px;display:grid;grid-template-columns:34px minmax(0,1fr) auto;gap:2px 12px;transition:border-color .15s}
+.item:hover{border-color:var(--line-strong)}
+.rank{font-size:15px;font-weight:700;width:30px;height:30px;border-radius:9px;background:var(--sunken);color:var(--muted);display:grid;place-items:center}
+.item:first-child .rank{background:var(--pine);color:#fff}
+.item h3{font-size:15.5px;font-weight:600;line-height:1.38;overflow-wrap:anywhere}
+.item-price{text-align:right}
+.item .price{font-size:17px}
+.item-body{grid-column:2/-1}
+.meta{display:flex;flex-wrap:wrap;gap:3px 14px;margin-top:6px;font-size:13.5px;color:var(--muted)}
+.chips{display:flex;flex-wrap:wrap;gap:5px;margin-top:9px}
+.chip{font-size:12px;padding:2px 9px;border-radius:999px;background:var(--sunken);color:var(--muted);font-weight:500}
+.chip.same{background:var(--pine-soft);color:var(--pine)}
+.chip.up{background:var(--clay-soft);color:var(--up)}
+.chip.down{background:#dff1e9;color:var(--down)}
+details{margin-top:9px;font-size:13.5px}
+summary{cursor:pointer;color:var(--pine);font-weight:500;font-size:13px}
+.why{display:grid;grid-template-columns:72px minmax(0,1fr) 40px;gap:4px 9px;align-items:center;margin-top:9px;max-width:440px;font-size:12.5px;color:var(--muted)}
+.bar{height:6px;border-radius:3px;background:var(--sunken);overflow:hidden}
+.bar i{display:block;height:100%;background:var(--pine);border-radius:3px}
+.why .num{text-align:right}
+.desc{white-space:pre-line;margin-top:8px;color:var(--muted);max-height:220px;overflow:auto;overflow-wrap:anywhere}
+.item-actions{display:flex;gap:16px;flex-wrap:wrap;margin-top:9px;font-size:13px;align-items:center}
+.score{font-size:12px;color:var(--faint);margin-top:3px}
+.state{padding:44px 26px;text-align:center;color:var(--muted)}
+.state h3{color:var(--ink);font-size:17px;font-weight:600;margin-bottom:5px}
+.state ol{display:inline-block;text-align:left;margin:13px 0 0;padding-left:20px}
+.skeleton{height:112px;border-radius:var(--radius);background:linear-gradient(100deg,var(--sunken) 30%,var(--paper) 50%,var(--sunken) 70%);background-size:300% 100%;animation:shimmer 1.3s linear infinite}
+@keyframes shimmer{from{background-position:100% 0}to{background-position:0 0}}
+@keyframes settle{from{background:#fff0c9}}
+.flash input,.flash select{animation:settle .9s ease-out}
+@media (prefers-reduced-motion:reduce){.skeleton,.flash input,.flash select{animation:none}html{scroll-behavior:auto}}
+
+/* Grading and pricing */
+.hint{background:var(--sunken);padding:11px 14px;border-radius:10px;font-size:13.5px;color:var(--muted);margin-bottom:16px}
+.grade-card{border-top:1px solid var(--line);padding:16px 0}
+.grade-card h3{font-size:15.5px;font-weight:600}
+.grade-row{display:grid;grid-template-columns:minmax(150px,230px) minmax(0,1fr) auto;gap:11px;align-items:end;margin-top:10px}
+pre{white-space:pre-wrap;word-break:break-word;font:12px/1.5 ui-monospace,monospace;background:var(--sunken);padding:11px;border-radius:9px}
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-top:12px}
+.tile{background:var(--sunken);border-radius:10px;padding:10px 13px}
+.tile small{display:block;color:var(--muted);font-size:12px}
+.tile strong{font-size:19px;font-weight:700}
+.estimate{margin-top:18px;padding:18px 20px;border-radius:12px;background:var(--pine-soft)}
+.estimate strong{display:block;font-size:30px;font-weight:700;color:var(--pine);line-height:1.2}
+.estimate small{color:var(--muted)}
+.versus{display:flex;flex-wrap:wrap;gap:8px 30px;margin-top:13px;padding-top:12px;border-top:1px solid #bfd8cf}
+.versus small{display:block;font-size:12px}
+.versus b{font-size:17px;font-weight:700}
+.versus .up{color:var(--up)}.versus .down{color:var(--down)}
+
+footer{max-width:1200px;margin:auto;padding:0 24px 34px;font-size:12.5px;color:var(--faint)}
+#notice{position:fixed;left:50%;bottom:22px;transform:translateX(-50%);max-width:min(560px,calc(100vw - 32px));background:var(--ink);color:#fff;padding:10px 16px;border-radius:11px;font-size:14px;box-shadow:0 12px 30px -10px rgba(0,0,0,.5);z-index:5;white-space:pre-wrap}
+#notice.error{background:var(--danger)}
+
+@media (max-width:900px){
+  .discover{grid-template-columns:minmax(0,1fr);margin-top:-46px}
+  .criteria{position:static;max-height:none}
+}
+@media (max-width:560px){
+  .topbar-in,main,footer{padding-left:16px;padding-right:16px}
+  .topbar-in{gap:8px 16px}.brand span{display:none}
+  .tabs{flex:none;order:3;width:100%}.tabs a{padding:5px 10px}
+  .topbar-side{width:auto;flex:1;justify-content:flex-end;font-size:11.5px}
+  .hero{padding-left:16px;padding-right:16px}
+  .seed-top{flex-direction:column;gap:8px}.seed-price{text-align:left}
+  .item{grid-template-columns:30px minmax(0,1fr)}
+  .item-price{grid-column:2;text-align:left;margin-top:3px}
+  .grade-row{grid-template-columns:minmax(0,1fr)}
+  .lookup{flex-direction:column}
+}
 </style>
-<main><header><span class="tag">REIP / RECOMMENDATION</span><h1>Khám phá bất động sản phù hợp</h1><div id="model" class="muted">Đang tải model…</div><small>Demo gợi ý theo nội dung. Chất lượng phù hợp cần được kiểm chứng bằng nhãn thật.</small><div><a href="/docs" target="_blank" rel="noopener">Tài liệu API</a> · <a href="#grading">Chấm điểm & xuất nhãn</a> · <a href="#pricing">Dự đoán giá bán</a></div></header>
-<div id="notice" role="status"></div>
-<section><h2>1. Tìm gợi ý</h2><div class="grid">
-<label>Cách tìm<select id="method"><option value="preferences">Theo nhu cầu</option><option value="similar">Tương tự một tin</option></select></label>
-<label>Giao dịch<select id="market"><option value="rent">Cho thuê</option><option value="sale">Mua bán</option></select></label>
-<label>Số kết quả / ứng viên<input id="limit" type="number" min="1" max="50" value="20"></label></div>
-<div id="preferences" class="grid row">
-<label>Loại bất động sản<select id="category"><option value="APARTMENT">Căn hộ</option><option value="HOUSE">Nhà</option><option value="LAND">Đất</option><option value="ROOM">Phòng trọ</option><option value="COMMERCIAL">Thương mại</option><option value="OTHER">Khác</option></select></label>
-<label>Chu kỳ giá thuê<select id="period"><option value="month">Tháng</option><option value="day">Ngày</option><option value="year">Năm</option></select></label>
-<label>Ngân sách tối đa (VND)<input id="price" type="number" min="1" placeholder="Ví dụ: 15000000"></label>
-<label>Diện tích tối thiểu (m²)<input id="area" type="number" min="1" placeholder="Ví dụ: 50"></label>
-<label>Phòng ngủ tối thiểu<input id="bedrooms" type="number" min="0" placeholder="Không giới hạn"></label>
-<label>Tỉnh/thành<select id="province"><option value="">Tất cả</option></select></label>
-<label>Quận/huyện<select id="district" disabled><option value="">Chọn tỉnh/thành trước</option></select></label>
-<label>Từ khóa nhu cầu<input id="query" placeholder="Ví dụ: ban công nội thất"></label>
+</head>
+<body>
+<div class="topbar"><div class="topbar-in">
+  <a class="brand" href="#discover">REIP<span>Bất động sản TP.HCM</span></a>
+  <nav class="tabs" aria-label="Chức năng">
+    <a href="#discover" data-tab="discover">Gợi ý</a>
+    <a href="#grading" data-tab="grading">Chấm nhãn</a>
+    <a href="#pricing" data-tab="pricing">Dự đoán giá</a>
+  </nav>
+  <div class="topbar-side"><span id="model"><i class="dot"></i>Đang tải model…</span><a href="/docs" target="_blank" rel="noopener">API</a></div>
+</div></div>
+
+<div id="tab-discover">
+  <div class="hero"><div class="hero-in">
+    <h1>Tìm bất động sản phù hợp chỉ từ một mã tin</h1>
+    <p>Nhập mã tin hoặc dán link Nhà Tốt (kể cả tin mới đăng), hệ thống tự điền thông tin của tin đó và gợi ý các tin tương tự.</p>
+    <form class="lookup" id="lookup-form">
+      <input id="lookup" autocomplete="off" aria-label="Mã tin, link tin hoặc tiêu đề" placeholder="Mã tin, link tin hoặc từ khóa tiêu đề">
+      <button class="btn accent" id="lookup-go">Điền và gợi ý</button>
+    </form>
+    <div id="picks"></div>
+    <div class="samples" id="samples"></div>
+  </div></div>
+
+  <main><div class="discover">
+    <aside class="panel criteria">
+      <div class="panel-title">Tiêu chí gợi ý</div>
+      <div id="mode" class="mode" role="status"></div>
+      <form id="criteria" class="fields">
+        <div class="wide" data-field="market"><label>Giao dịch<i class="tag-auto" title="Tự điền từ tin gốc"></i></label>
+          <div class="segment" id="market-segment">
+            <button type="button" data-market="rent" aria-pressed="true">Cho thuê</button>
+            <button type="button" data-market="sale" aria-pressed="false">Mua bán</button>
+          </div>
+          <input type="hidden" id="market" value="rent">
+        </div>
+        <div data-field="category"><label>Loại bất động sản<i class="tag-auto" title="Tự điền từ tin gốc"></i><select id="category"><option value="APARTMENT">Căn hộ</option><option value="HOUSE">Nhà</option><option value="LAND">Đất</option><option value="ROOM">Phòng trọ</option><option value="COMMERCIAL">Thương mại</option><option value="OTHER">Khác</option></select></label></div>
+        <div data-field="period"><label>Chu kỳ giá<i class="tag-auto" title="Tự điền từ tin gốc"></i><select id="period"><option value="month">Tháng</option><option value="day">Ngày</option><option value="year">Năm</option><option value="unknown">Không rõ</option><option value="total" hidden>Tổng giá</option></select></label></div>
+        <div data-field="province"><label>Tỉnh/thành<i class="tag-auto" title="Tự điền từ tin gốc"></i><select id="province"><option value="">Tất cả</option></select></label></div>
+        <div data-field="district"><label>Quận/huyện<i class="tag-auto" title="Tự điền từ tin gốc"></i><select id="district" disabled><option value="">Chọn tỉnh/thành trước</option></select></label></div>
+        <div class="group-label">Giá và diện tích</div>
+        <div data-field="target_price"><label>Giá mong muốn (₫)<i class="tag-auto" title="Tự điền từ tin gốc"></i><input id="target_price" type="number" min="1" placeholder="15000000"></label></div>
+        <div data-field="price"><label>Ngân sách tối đa (₫)<input id="price" type="number" min="1" placeholder="Không giới hạn"></label></div>
+        <div data-field="target_area"><label>DT mong muốn (m²)<i class="tag-auto" title="Tự điền từ tin gốc"></i><input id="target_area" type="number" min="1" step="any" placeholder="50"></label></div>
+        <div data-field="area"><label>DT tối thiểu (m²)<input id="area" type="number" min="1" step="any" placeholder="Không giới hạn"></label></div>
+        <div data-field="bedrooms"><label>Phòng ngủ tối thiểu<i class="tag-auto" title="Tự điền từ tin gốc"></i><input id="bedrooms" type="number" min="0" placeholder="Không giới hạn"></label></div>
+        <div data-field="limit"><label>Số kết quả<input id="limit" type="number" min="1" max="50" value="20"></label></div>
+        <div class="wide" data-field="query"><label>Từ khóa nhu cầu<i class="tag-auto" title="Tự điền từ tin gốc"></i><input id="query" maxlength="1000" placeholder="Ví dụ: ban công nội thất"></label></div>
+      </form>
+      <button class="btn block" id="search">Gợi ý bất động sản</button>
+    </aside>
+
+    <section aria-label="Kết quả">
+      <div id="seed-card"></div>
+      <div class="results-head hidden" id="results-head"><h2 id="result-title"></h2><small id="result-meta"></small></div>
+      <div id="results">
+        <div class="panel state"><h3>Bắt đầu từ một mã tin</h3>Hoặc tự chọn tiêu chí ở cột bên rồi bấm <b>Gợi ý bất động sản</b>.
+          <br><ol><li>Nhập mã tin, link tin hoặc từ khóa ở ô phía trên.</li><li>Biểu mẫu được tự điền theo tin đó.</li><li>Sửa tiêu chí nếu muốn, rồi gợi ý lại.</li></ol></div>
+      </div>
+    </section>
+  </div></main>
 </div>
-<div id="similar" class="hidden"><div class="row"><input id="catalog-query" placeholder="Tìm tiêu đề hoặc mã tin" style="flex:1"><button id="catalog-search" class="secondary">Tìm tin gốc</button></div><label>Tin gốc<select id="seed"></select></label><div id="seed-detail"></div></div>
-<div class="row"><button id="search">Gợi ý bất động sản</button><span id="result-meta" class="muted"></span></div><div id="results"></div></section>
-<section id="grading"><h2>2. Chấm điểm & xuất nhãn</h2><p class="hint">0 = không phù hợp · 1 = hơi phù hợp · 2 = phù hợp · 3 = rất phù hợp. Để trống = chưa chấm. Ứng viên được xáo thứ tự và ẩn điểm model. Hãy chấm theo nhu cầu hoặc tin gốc trong phiếu.</p>
-<div class="grid"><label>Người chấm<input id="annotator" maxlength="100" placeholder="Tên / mã người chấm"></label><label>Tập nhãn<select id="split"><option value="tune">Tune — tinh chỉnh</option><option value="test">Test — đánh giá độc lập</option></select></label><label>K khi đánh giá<input id="k" type="number" min="1" max="50" value="10"></label></div>
-<div class="row"><button id="create-task">Tạo phiếu từ kết quả vừa tìm</button><button id="refresh-tasks" class="secondary">Tải danh sách phiếu</button></div>
-<label>Tiếp tục phiếu đã lưu<select id="tasks"><option value="">Chọn phiếu</option></select></label><div id="task-context"></div><div id="grades"></div><div id="export" class="row"></div></section>
-<section id="pricing"><h2>3. Dự đoán giá bán</h2><div id="price-model" class="muted">Đang tải model giá…</div><div class="grid row">
-<label>Loại bất động sản<select id="p-type"></select></label>
-<label>Loại hình chi tiết<select id="p-subtype"></select></label>
-<label>Quận/huyện<select id="p-district"></select></label>
-<label>Phường/xã<select id="p-ward"></select></label>
-<label>Diện tích (m²) *<input id="p-area" type="number" min="1" placeholder="Ví dụ: 60"></label>
-<label>Ngang (m)<input id="p-width" type="number" min="0" step="0.1"></label>
-<label>Dài (m)<input id="p-length" type="number" min="0" step="0.1"></label>
-<label>Phòng ngủ<input id="p-bedrooms" type="number" min="0"></label>
-<label>Phòng vệ sinh<input id="p-bathrooms" type="number" min="0"></label>
-<label>Tổng số tầng<input id="p-floors" type="number" min="0"></label>
-<label>Tầng số (căn hộ)<input id="p-floor" type="number" min="0"></label>
-<label>Pháp lý<select id="p-legal"></select></label>
-<label>Nội thất<select id="p-furnishing"></select></label>
-<label>Hướng nhà<select id="p-direction"></select></label>
-<label>Tình trạng bàn giao<select id="p-handover"></select></label>
-<label>Tên dự án<input id="p-project" placeholder="Để trống nếu không thuộc dự án"></label>
-</div><div class="row"><label><input id="p-has_car_alley" type="checkbox" style="width:auto"> Hẻm xe hơi</label><label><input id="p-is_frontage" type="checkbox" style="width:auto"> Mặt tiền</label><label><input id="p-is_planning_affected" type="checkbox" style="width:auto"> Dính quy hoạch / lộ giới</label></div>
-<div class="row"><button id="predict">Dự đoán giá</button></div><div id="price-result"></div></section>
-<footer class="muted">Dữ liệu mua bán và cho thuê được xử lý riêng. Nhãn lưu trên máy chủ; chỉ phiếu chấm đủ mới xuất được. Không dùng tập test để chỉnh trọng số.</footer></main>
+
+<main id="tab-grading" class="page hidden">
+  <section class="panel">
+    <h2>Chấm nhãn và xuất dữ liệu đánh giá</h2>
+    <p class="page-lead">Tạo phiếu từ kết quả gợi ý vừa tìm để đánh giá chất lượng model bằng nhãn của người thật.</p>
+    <p class="hint">0 = không phù hợp · 1 = hơi phù hợp · 2 = phù hợp · 3 = rất phù hợp. Để trống = chưa chấm. Ứng viên được xáo thứ tự và ẩn điểm model. Hãy chấm theo nhu cầu hoặc tin gốc trong phiếu.</p>
+    <div class="form-grid">
+      <label>Người chấm<input id="annotator" maxlength="100" placeholder="Tên / mã người chấm"></label>
+      <label>Tập nhãn<select id="split"><option value="tune">Tune — tinh chỉnh</option><option value="test">Test — đánh giá độc lập</option></select></label>
+      <label>K khi đánh giá<input id="k" type="number" min="1" max="50" value="10"></label>
+    </div>
+    <div class="row"><button class="btn" id="create-task">Tạo phiếu từ kết quả vừa tìm</button><button class="btn ghost" id="refresh-tasks">Tải danh sách phiếu</button><small id="task-source" class="num" style="color:var(--muted)"></small></div>
+    <label style="margin-top:16px">Tiếp tục phiếu đã lưu<select id="tasks"><option value="">Chọn phiếu</option></select></label>
+  </section>
+  <section class="panel hidden" id="task-panel">
+    <div id="task-context"></div><div id="grades"></div><div id="export" class="row"></div><div id="metrics-output"></div>
+  </section>
+</main>
+
+<main id="tab-pricing" class="page hidden">
+  <section class="panel">
+    <h2>Dự đoán giá bán</h2>
+    <p class="page-lead" id="price-model">Đang tải model giá…</p>
+    <form class="lookup on-light" id="p-lookup-form">
+      <input id="p-lookup" autocomplete="off" aria-label="Mã tin bán, link tin hoặc tiêu đề" placeholder="Mã tin bán, link tin hoặc từ khóa tiêu đề">
+      <button class="btn accent" id="p-lookup-go">Điền và dự đoán</button>
+    </form>
+    <div id="p-picks"></div>
+    <div class="samples on-light" id="p-samples"></div>
+    <div id="p-seed"></div>
+    <div id="p-mode" class="mode" role="status" style="margin-bottom:16px"></div>
+    <div class="form-grid" id="price-fields">
+      <label>Loại bất động sản<select id="p-type"></select></label>
+      <label>Loại hình chi tiết<select id="p-subtype"></select></label>
+      <label>Quận/huyện<select id="p-district"></select></label>
+      <label>Phường/xã<select id="p-ward"></select></label>
+      <label>Diện tích (m²) *<input id="p-area" type="number" min="1" placeholder="Ví dụ: 60"></label>
+      <label>DT sử dụng (m²)<input id="p-living" type="number" min="0" step="any"></label>
+      <label>Ngang (m)<input id="p-width" type="number" min="0" step="0.1"></label>
+      <label>Dài (m)<input id="p-length" type="number" min="0" step="0.1"></label>
+      <label>Phòng ngủ<input id="p-bedrooms" type="number" min="0"></label>
+      <label>Phòng vệ sinh<input id="p-bathrooms" type="number" min="0"></label>
+      <label>Tổng số tầng<input id="p-floors" type="number" min="0"></label>
+      <label>Tầng số (căn hộ)<input id="p-floor" type="number" min="0"></label>
+      <label>Pháp lý<select id="p-legal"></select></label>
+      <label>Nội thất<select id="p-furnishing"></select></label>
+      <label>Hướng nhà<select id="p-direction"></select></label>
+      <label>Tình trạng bàn giao<select id="p-handover"></select></label>
+      <label>Tên dự án<input id="p-project" placeholder="Để trống nếu không thuộc dự án"></label>
+    </div>
+    <div class="row" id="price-flags">
+      <label class="check"><input id="p-has_car_alley" type="checkbox">Hẻm xe hơi</label>
+      <label class="check"><input id="p-is_frontage" type="checkbox">Mặt tiền</label>
+      <label class="check"><input id="p-is_planning_affected" type="checkbox">Dính quy hoạch / lộ giới</label>
+      <label class="check"><input id="p-is_wide_back" type="checkbox">Nở hậu</label>
+      <label class="check"><input id="p-is_narrow_back" type="checkbox">Tóp hậu</label>
+      <label class="check"><input id="p-is_dilapidated" type="checkbox">Nhà nát</label>
+      <label class="check"><input id="p-is_not_completed" type="checkbox">Chưa hoàn công</label>
+    </div>
+    <div class="row"><button class="btn" id="predict">Dự đoán giá</button></div>
+    <div id="price-result"></div>
+  </section>
+</main>
+
+<footer>Dữ liệu mua bán và cho thuê được xử lý riêng. Điểm xếp hạng là điểm nội bộ của model, chưa được kiểm chứng bằng nhãn thật. Không dùng tập test để chỉnh trọng số.</footer>
+<div id="notice" class="hidden" role="status"></div>
+
 <script>
-const $=id=>document.getElementById(id);let result=null,task=null,catalog=[],districtOptions=[],filterVersion=0;
-const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-async function api(path,body,method='POST'){const r=await fetch(path,body===undefined?{}:{method,headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});if(!r.ok){let e=await r.json();throw Error(typeof e.detail==='string'?e.detail:JSON.stringify(e.detail));}return r.json();}
-function notice(message,error=false){$('notice').style.display='block';$('notice').textContent=message;$('notice').className=error?'error':'';}
-function action(id,fn){$(id).onclick=async()=>{const b=$(id);b.disabled=true;try{await fn();}catch(e){notice(e.message,true);}finally{b.disabled=false;}};}
-function card(x,rank){let href='';try{let u=new URL(x.url);if(['http:','https:'].includes(u.protocol))href=u.href;}catch{};return `<div class="card">${rank?`<small>#${rank}</small>`:''}<h3>${esc(x.title||x.listing_key)}</h3><div>${esc(x.price_vnd==null?'Chưa có giá':Number(x.price_vnd).toLocaleString('vi-VN')+' ₫')} / ${esc({total:'tổng',month:'tháng',day:'ngày',year:'năm'}[x.price_period]||x.price_period)} · ${esc(x.area_m2??'?')} m² · ${esc(x.bedrooms??'?')} PN</div><small>${esc([x.district,x.province].filter(Boolean).join(', '))} · ${esc(x.listing_key)}</small><details><summary>Mô tả tin</summary><p>${esc(x.description||'Không có mô tả')}</p></details>${href?`<a href="${esc(href)}" target="_blank" rel="noopener noreferrer">Mở tin gốc ↗</a>`:''}</div>`;}
-async function model(){let m=await api('/model');$('model').textContent=`Model v${m.version} · Sale: ${m.markets.sale.rows.toLocaleString()} · Rent: ${m.markets.rent.rows.toLocaleString()} · Dữ liệu: ${m.as_of}`;}
-function mode(){$('preferences').classList.toggle('hidden',$('method').value!=='preferences');$('similar').classList.toggle('hidden',$('method').value!=='similar');$('period').disabled=$('market').value==='sale';}
-function districts(){const province=$('province').value;const rows=districtOptions.filter(d=>d.province_id===province);$('district').disabled=!province||!rows.length;$('district').innerHTML=`<option value="">${!province?'Chọn tỉnh/thành trước':!rows.length?'Chưa có quận/huyện trong dữ liệu':'Tất cả quận/huyện'}</option>`+rows.map(d=>`<option value="${esc(d.district_id)}">${esc(d.district||d.district_id)}</option>`).join('');}
-async function filters(){const version=++filterVersion;districtOptions=[];$('province').innerHTML='<option value="">Tất cả</option>';$('province').disabled=true;districts();let r=await api('/filters?market='+$('market').value);if(version!==filterVersion)return;districtOptions=r.districts||[];$('province').innerHTML='<option value="">Tất cả</option>'+r.provinces.map(p=>`<option value="${esc(p.province_id)}">${esc(p.province||p.province_id)}</option>`).join('');$('province').disabled=false;districts();}
-$('province').onchange=districts;$('method').onchange=mode;$('market').onchange=()=>{mode();filters().catch(e=>notice(e.message,true));catalog=[];$('seed').innerHTML='';$('seed-detail').innerHTML='';};mode();
-action('catalog-search',async()=>{let r=await api('/catalog?market='+$('market').value+'&q='+encodeURIComponent($('catalog-query').value)+'&limit=30');catalog=r.items;$('seed').innerHTML=catalog.map(x=>`<option value="${esc(x.listing_key)}">${esc(x.title)}</option>`).join('');$('seed').onchange();if(!catalog.length)notice('Không tìm thấy tin.');});
-$('seed').onchange=()=>{let x=catalog.find(x=>x.listing_key===$('seed').value);$('seed-detail').innerHTML=x?card(x):'';};
-action('search',async()=>{let method=$('method').value,r={limit:Number($('limit').value)};if(method==='similar'){if(!$('seed').value)throw Error('Tìm và chọn một tin gốc.');r.listing_key=$('seed').value;}else{Object.assign(r,{transaction_type:$('market').value,property_category:$('category').value,price_period:$('market').value==='sale'?'total':$('period').value});for(let [id,key] of [['price','max_price'],['area','min_area'],['bedrooms','min_bedrooms']])if($(id).value!=='')r[key]=Number($(id).value);if($('province').value.trim())r.province_id=$('province').value.trim();if(!$('district').disabled&&$('district').value)r.district_id=$('district').value;if($('query').value.trim())r.query=$('query').value.trim();}result=await api('/recommend',{method,request:r});$('result-meta').textContent=`${result.items.length} kết quả · model v${result.version}`;$('results').innerHTML=result.items.length?result.items.map((x,i)=>card(x,i+1)+`<small>Điểm xếp hạng: ${Number(x.score).toFixed(3)} · ${esc(JSON.stringify(x.reasons))}</small>`).join(''):'Không có tin thỏa bộ lọc. Hãy thử nới điều kiện.';notice('Đã tìm xong. Có thể tạo phiếu để đánh giá kết quả này.');});
-async function tasks(){let rows=await api('/tasks');$('tasks').innerHTML='<option value="">Chọn phiếu</option>'+rows.map(t=>`<option value="${esc(t.query_id)}">${esc(t.annotator)} · ${t.split} · v${esc(t.model_version)} · ${Object.values(t.relevance).filter(v=>v!==null).length}/${Object.keys(t.relevance).length} · ${t.query_id.slice(0,8)}</option>`).join('');if(task)$('tasks').value=task.query_id;}
-function renderTask(){let done=Object.values(task.relevance).filter(v=>v!==null).length,total=task.items.length;$('task-context').innerHTML=`<h3>Phiếu ${task.query_id.slice(0,8)} · ${done}/${total} đã chấm</h3><p>Model v${esc(task.model_version)} · ${esc(task.split)} · K=${task.k}</p><details open><summary>Nhu cầu được cố định khi tạo phiếu</summary><pre>${esc(JSON.stringify({method:task.method,request:task.request,as_of:task.as_of},null,2))}</pre>${task.seed?card(task.seed):''}</details>`;$('grades').innerHTML=task.items.map((x,i)=>`${card(x)}<div class="row"><label class="grade">Nhãn<select id="grade-${i}"><option value="">Chưa chấm</option>${[0,1,2,3].map(n=>`<option value="${n}" ${task.relevance[x.listing_key]===n?'selected':''}>${n} — ${['Không phù hợp','Hơi phù hợp','Phù hợp','Rất phù hợp'][n]}</option>`).join('')}</select></label><label style="flex:1">Ghi chú<input id="note-${i}" maxlength="2000" value="${esc(task.notes[x.listing_key]||'')}"></label><button id="save-${i}" class="secondary">Lưu nhãn</button></div>`).join('');task.items.forEach((x,i)=>action('save-'+i,async()=>{let v=$('grade-'+i).value;task=await api('/tasks/'+task.query_id,{listing_key:x.listing_key,grade:v===''?null:Number(v),note:$('note-'+i).value,version:task.version},'PATCH');notice('Đã lưu nhãn.');renderTask();}));$('export').innerHTML=done===total?`<button id="metrics" class="secondary">Xem chỉ số của phiếu</button><a href="/export?task_id=${task.query_id}&format=jsonl">Tải JSONL để đánh giá mô hình</a><a href="/export?task_id=${task.query_id}&format=csv">Tải CSV</a>`:'Chấm đủ mọi ứng viên để xuất kết quả.';if(done===total)action('metrics',async()=>{let r=await api('/tasks/'+task.query_id+'/metrics');notice(JSON.stringify(r.metrics)+' — '+r.scope);});}
-action('create-task',async()=>{if(!result||!result.items.length)throw Error('Hãy tìm gợi ý trước.');task=await api('/tasks',{method:result.method,request:result.request,model_version:result.version,annotator:$('annotator').value,split:$('split').value,k:Number($('k').value)});await tasks();renderTask();notice('Đã lưu phiếu. Chấm từng tin và bấm Lưu nhãn.');});
-action('refresh-tasks',tasks);$('tasks').onchange=async()=>{if(!$('tasks').value)return;try{task=await api('/tasks/'+$('tasks').value);renderTask();}catch(e){notice(e.message,true);}};
-let priceOptions=null;
-const opts=(rows,blank)=>(blank===undefined?'':`<option value="">${esc(blank)}</option>`)+rows.map(([v,t])=>`<option value="${esc(v)}">${esc(t)}</option>`).join('');
-const vnd=x=>x>=1e9?(x/1e9).toLocaleString('vi-VN',{maximumFractionDigits:2})+' tỷ':(x/1e6).toLocaleString('vi-VN',{maximumFractionDigits:1})+' triệu';
-function priceSubtypes(){const s=priceOptions.subtypes;$('p-subtype').innerHTML=opts((s[$('p-type').value]||s['*']||[]).map(v=>[v,v]),'Không rõ');}
-function priceWards(){const rows=priceOptions.wards[$('p-district').value]||[];$('p-ward').innerHTML=opts(rows.map(w=>[w.ward_id,w.ward||w.ward_id]),'Không rõ');}
-async function priceForm(){const [o,m]=await Promise.all([api('/price/options'),api('/price/model')]);priceOptions=o;$('p-type').innerHTML=opts(o.property_types.map(v=>[v,v]));$('p-district').innerHTML=opts([...o.districts].sort((a,b)=>String(a.district).localeCompare(String(b.district),'vi')).map(d=>[d.district_id,d.district||d.district_id]));for(let [id,key] of [['p-legal','legal_categories'],['p-furnishing','furnishings'],['p-direction','house_directions'],['p-handover','handover_statuses']])$(id).innerHTML=opts(o[key].map(v=>[v,v]),'Không rõ');priceSubtypes();priceWards();const mape=(m.test_metrics||{}).test_mape;$('price-model').textContent=`Model giá v${m.version}`+(mape==null?'':` · MAPE tập test: ${(mape*100).toFixed(1)}%`);}
-$('p-type').onchange=priceSubtypes;$('p-district').onchange=priceWards;
-action('predict',async()=>{if(!priceOptions)throw Error('Chưa tải được model giá.');if(!(Number($('p-area').value)>0))throw Error('Nhập diện tích lớn hơn 0.');const body={property_type:$('p-type').value,district_id:$('p-district').value,area_m2:Number($('p-area').value)};for(let [id,key] of [['p-subtype','property_subtype'],['p-ward','ward_id'],['p-legal','legal_category'],['p-furnishing','furnishing'],['p-direction','house_direction'],['p-handover','handover_status']])if($(id).value)body[key]=$(id).value;for(let [id,key] of [['p-width','width_m'],['p-length','length_m'],['p-bedrooms','bedrooms'],['p-bathrooms','bathrooms'],['p-floors','total_floors'],['p-floor','floor_number']])if($(id).value!=='')body[key]=Number($(id).value);if($('p-project').value.trim())body.project_name=$('p-project').value.trim();
-// The form has no map: use the median coordinates of the ward's training listings.
-const ward=(priceOptions.wards[body.district_id]||[]).find(w=>w.ward_id===body.ward_id);if(ward&&ward.latitude!=null){body.latitude=ward.latitude;body.longitude=ward.longitude;}for(let key of ['has_car_alley','is_frontage','is_planning_affected'])body[key]=$('p-'+key).checked;const r=await api('/price/predict',body);$('price-result').innerHTML=`<div class="card"><h3>${esc(vnd(r.predicted_price_vnd))}</h3><div>${esc(Number(r.predicted_price_vnd).toLocaleString('vi-VN'))} ₫ · ${esc(vnd(r.predicted_price_per_m2_vnd))}/m²</div><small>Giá bán ước lượng từ model giá v${esc(r.model_version)}, không phải giá giao dịch thực tế.</small></div>`;});
-priceForm().catch(e=>{$('price-model').textContent='Chưa kết nối được API dự đoán giá: '+e.message;});
-filters().catch(e=>notice(e.message,true));model().catch(e=>notice('Chưa nạp được model: '+e.message,true));tasks().catch(e=>notice(e.message,true));
-</script></html>
+const $ = id => document.getElementById(id);
+const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+let result = null, task = null, districtOptions = [], filterVersion = 0, lookupVersion = 0;
+// The listing the form was filled from, and the form values right after that fill.
+let seed = null, seedForm = null, resultSeed = null;
+
+const CATEGORY = {APARTMENT:'Căn hộ', HOUSE:'Nhà', LAND:'Đất', ROOM:'Phòng trọ', COMMERCIAL:'Thương mại', OTHER:'Khác'};
+const PERIOD = {month:'tháng', day:'ngày', year:'năm'};
+const REASON = {text:'Nội dung', price:'Giá', area:'Diện tích', location:'Vị trí', structure:'Cấu trúc', freshness:'Độ mới'};
+const FORM_FIELDS = ['market', 'category', 'period', 'province', 'district', 'target_price', 'price', 'target_area', 'area', 'bedrooms', 'query'];
+
+async function api(path, body, method='POST') {
+  const r = await fetch(path, body === undefined ? {} : {method, headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)});
+  if (!r.ok) {
+    let e;
+    try { e = await r.json(); } catch { e = {detail:`Lỗi máy chủ (${r.status}).`}; }
+    const error = Error(typeof e.detail === 'string' ? e.detail : JSON.stringify(e.detail));
+    error.status = r.status;
+    throw error;
+  }
+  return r.json();
+}
+
+let noticeTimer;
+function notice(message, error=false) {
+  const n = $('notice');
+  n.textContent = message;
+  n.className = error ? 'error' : '';
+  clearTimeout(noticeTimer);
+  noticeTimer = setTimeout(() => n.classList.add('hidden'), error ? 9000 : 3500);
+}
+
+function action(id, fn) {
+  $(id).onclick = async event => {
+    event.preventDefault();
+    const b = $(id);
+    b.disabled = true;
+    try { await fn(); } catch (e) { notice(e.message, true); } finally { b.disabled = false; }
+  };
+}
+
+const vnd = x => x >= 1e9 ? (x/1e9).toLocaleString('vi-VN', {maximumFractionDigits:2})+' tỷ' : (x/1e6).toLocaleString('vi-VN', {maximumFractionDigits:1})+' triệu';
+const count = x => Number(x).toLocaleString('vi-VN');
+const area = x => Number(x).toLocaleString('vi-VN', {maximumFractionDigits:1})+' m²';
+const place = x => [x.ward, x.district, x.province].filter(Boolean).join(', ');
+const hasPrice = x => x.price_vnd != null && x.price_vnd > 0;
+
+function priceHtml(x) {
+  if (!hasPrice(x)) return '<div class="price">Chưa có giá</div>';
+  const per = PERIOD[x.price_period];
+  return `<div class="price num" title="${esc(count(x.price_vnd))} ₫">${esc(vnd(x.price_vnd))}${per ? `<small> /${esc(per)}</small>` : ''}</div>`;
+}
+
+// Stored links point to the JSON gateway; send people to the readable page instead.
+function listingLink(x) {
+  try {
+    const u = new URL(x.url);
+    if (u.hostname === 'gateway.chotot.com' && x.source_listing_id) return `https://www.nhatot.com/${encodeURIComponent(x.source_listing_id)}.htm`;
+    if (['http:', 'https:'].includes(u.protocol)) return u.href;
+  } catch {}
+  return '';
+}
+const openLink = x => {
+  const href = listingLink(x);
+  return href ? `<a href="${esc(href)}" target="_blank" rel="noopener noreferrer">Mở tin gốc ↗</a>` : '';
+};
+const listingId = x => x.source_listing_id || x.listing_key;
+
+function metaHtml(x) {
+  const parts = [x.area_m2 != null ? esc(area(x.area_m2)) : '', x.bedrooms != null ? `${esc(x.bedrooms)} PN` : '', x.bathrooms != null ? `${esc(x.bathrooms)} WC` : '', esc(place(x))];
+  return `<div class="meta num">${parts.filter(Boolean).map(p => `<span>${p}</span>`).join('')}</div>`;
+}
+
+function compareChips(x, base) {
+  if (!base || base.transaction_type !== x.transaction_type || base.price_period !== x.price_period) return '';
+  const chips = [];
+  if (hasPrice(x) && hasPrice(base)) {
+    const pct = Math.round((x.price_vnd/base.price_vnd - 1)*100);
+    chips.push(pct === 0 ? '<span class="chip same">Cùng mức giá</span>' : `<span class="chip ${pct > 0 ? 'up' : 'down'}">Giá ${pct > 0 ? '+' : '−'}${Math.abs(pct)}%</span>`);
+  }
+  if (x.area_m2 != null && base.area_m2 != null) {
+    const diff = Math.round(x.area_m2 - base.area_m2);
+    chips.push(diff === 0 ? '<span class="chip same">Cùng diện tích</span>' : `<span class="chip">${diff > 0 ? '+' : '−'}${Math.abs(diff)} m²</span>`);
+  }
+  if (x.district_id && x.district_id === base.district_id) chips.push('<span class="chip same">Cùng quận</span>');
+  return chips.join('');
+}
+
+function whyHtml(reasons) {
+  return `<div class="why num">${Object.entries(reasons || {}).map(([k, v]) => `<span>${esc(REASON[k] || k)}</span><div class="bar"><i style="width:${Math.max(0, Math.min(100, v*100)).toFixed(0)}%"></i></div><span class="num">${Number(v).toFixed(2)}</span>`).join('')}</div>`;
+}
+
+function resultCard(x, rank) {
+  const compare = compareChips(x, resultSeed);
+  return `<article class="panel item">
+    <div class="rank num">${rank}</div>
+    <h3>${esc(x.title || x.listing_key)}</h3>
+    <div class="item-price">${priceHtml(x)}<div class="score num">Điểm ${Number(x.score).toFixed(3)}</div></div>
+    <div class="item-body">
+      ${metaHtml(x)}
+      <div class="chips"><span class="chip">${esc(CATEGORY[x.property_category] || x.property_category)}</span>${compare}</div>
+      <details><summary>Vì sao gợi ý tin này?</summary>${whyHtml(x.reasons)}</details>
+      <details><summary>Mô tả tin</summary><p class="desc">${esc(x.description || 'Không có mô tả')}</p></details>
+      <div class="item-actions"><button type="button" class="link-btn" data-seed="${esc(x.listing_key)}">Tìm tin tương tự tin này</button>${openLink(x)}<span class="num" style="color:var(--faint)">Mã ${esc(listingId(x))}</span></div>
+    </div>
+  </article>`;
+}
+
+function fact(label, value) {
+  return value === null || value === undefined || value === '' ? '' : `<div class="fact"><small>${esc(label)}</small><span>${esc(value)}</span></div>`;
+}
+
+function seedHtml(seed, actions='', extraClass='') {
+  const features = [seed.has_car_alley && 'Hẻm xe hơi', seed.is_frontage && 'Mặt tiền'].filter(Boolean).join(', ');
+  return `<article class="panel seed ${extraClass}">
+    <div class="seed-top">
+      <div><div class="eyebrow">Tin gốc · ${esc(seed.transaction_type === 'sale' ? 'Mua bán' : 'Cho thuê')} · Mã ${esc(listingId(seed))}${seed.live ? ' · Vừa lấy từ Nhà Tốt, chưa có trong dữ liệu' : ''}</div><h2>${esc(seed.title || seed.listing_key)}</h2></div>
+      <div class="seed-price">${priceHtml(seed)}</div>
+    </div>
+    <div class="facts num">
+      ${fact('Loại', [CATEGORY[seed.property_category], seed.property_subtype].filter(Boolean).join(' · '))}
+      ${fact('Diện tích', seed.area_m2 != null ? area(seed.area_m2) : '')}
+      ${fact('Phòng ngủ', seed.bedrooms)}${fact('Phòng vệ sinh', seed.bathrooms)}
+      ${fact('Vị trí', place(seed))}${fact('Dự án', seed.project_name)}
+      ${fact('Pháp lý', seed.legal_status)}${fact('Nội thất', seed.furnishing)}
+      ${fact('Hướng nhà', seed.house_direction)}${fact('Đặc điểm', features)}
+    </div>
+    <details><summary>Mô tả tin</summary><p class="desc">${esc(seed.description || 'Không có mô tả')}</p></details>
+    <div class="item-actions">${actions}${openLink(seed)}</div>
+  </article>`;
+}
+
+function renderSeed() {
+  const pricing = seed && !priceBlocker(seed) ? '<button type="button" class="link-btn" id="seed-to-price">Dự đoán giá tin này</button>' : '';
+  $('seed-card').innerHTML = seed ? seedHtml(seed, pricing) : '';
+  if (pricing) $('seed-to-price').onclick = () => {
+    const x = seed;
+    location.hash = '#pricing';
+    priceReady.then(() => usePriceListing(x)).catch(e => notice(e.message, true));
+  };
+}
+
+/* ---------- Criteria form ---------- */
+const formValues = () => Object.fromEntries(FORM_FIELDS.map(id => [id, $(id).value.trim()]));
+
+function setMarket(value) {
+  $('market').value = value;
+  document.querySelectorAll('#market-segment button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.market === value)));
+  const sale = value === 'sale';
+  $('period').disabled = sale;
+  if (sale) $('period').value = 'total';
+  else if ($('period').value === 'total') $('period').value = 'month';
+}
+
+function districts() {
+  const province = $('province').value;
+  const rows = districtOptions.filter(d => d.province_id === province);
+  $('district').disabled = !province || !rows.length;
+  $('district').innerHTML = `<option value="">${!province ? 'Chọn tỉnh/thành trước' : !rows.length ? 'Chưa có quận/huyện' : 'Tất cả quận/huyện'}</option>`
+    + rows.map(d => `<option value="${esc(d.district_id)}">${esc(d.district || d.district_id)}</option>`).join('');
+}
+
+async function filters() {
+  const version = ++filterVersion;
+  districtOptions = [];
+  $('province').innerHTML = '<option value="">Tất cả</option>';
+  $('province').disabled = true;
+  districts();
+  const r = await api('/filters?market='+$('market').value);
+  if (version !== filterVersion) return;
+  districtOptions = r.districts || [];
+  $('province').innerHTML = '<option value="">Tất cả</option>' + r.provinces.map(p => `<option value="${esc(p.province_id)}">${esc(p.province || p.province_id)}</option>`).join('');
+  $('province').disabled = false;
+  districts();
+}
+
+function updateMode() {
+  const edited = seed && JSON.stringify(formValues()) !== JSON.stringify(seedForm);
+  const box = $('mode');
+  box.className = 'mode' + (seed ? (edited ? ' edited' : ' seeded') : '');
+  if (!seed) box.innerHTML = '<strong>Gợi ý theo nhu cầu</strong>Xếp hạng theo các tiêu chí bạn nhập bên dưới.';
+  else if (!edited && seed.live) box.innerHTML = '<strong>Gợi ý theo tin vừa lấy từ Nhà Tốt</strong>Tin này chưa có trong dữ liệu của model, nên hệ thống gợi ý theo các tiêu chí tự điền từ tin (loại, giá, diện tích, vị trí, tiêu đề).<div class="row"><button type="button" class="link-btn" id="clear-seed">Bỏ tin gốc</button></div>';
+  else if (!edited) box.innerHTML = '<strong>Gợi ý tương tự tin gốc</strong>So sánh trực tiếp với tin gốc về nội dung, giá, diện tích và vị trí. Ô tô màu xanh được tự điền từ tin gốc.<div class="row"><button type="button" class="link-btn" id="clear-seed">Bỏ tin gốc</button></div>';
+  else box.innerHTML = '<strong>Đã chỉnh tiêu chí</strong>Lần gợi ý tới sẽ chạy theo các tiêu chí đang hiển thị, không so sánh trực tiếp với tin gốc nữa.<div class="row"><button type="button" class="link-btn" id="reset-seed">Khôi phục theo tin gốc</button><button type="button" class="link-btn" id="clear-seed">Bỏ tin gốc</button></div>';
+  if ($('clear-seed')) $('clear-seed').onclick = clearSeed;
+  if ($('reset-seed')) $('reset-seed').onclick = () => fillFromSeed(seed);
+  for (const id of FORM_FIELDS) {
+    const holder = document.querySelector(`[data-field="${id}"]`);
+    holder.classList.toggle('filled', Boolean(seedForm && seedForm[id] && $(id).value.trim() === seedForm[id]));
+  }
+}
+
+function clearSeed() {
+  seed = seedForm = null;
+  renderSeed();
+  updateMode();
+}
+
+// A listing has no budget cap or minimum area, so those two fields are cleared.
+async function fillFromSeed(x) {
+  const version = ++lookupVersion;
+  if ($('market').value !== x.transaction_type) {
+    setMarket(x.transaction_type);
+    await filters();
+    if (version !== lookupVersion) return;
+  }
+  $('category').value = x.property_category;
+  $('period').value = x.price_period;
+  // The engine rejects a target price when the period is unknown.
+  $('target_price').value = x.price_period !== 'unknown' && hasPrice(x) ? x.price_vnd : '';
+  $('target_area').value = x.area_m2 ?? '';
+  $('bedrooms').value = x.bedrooms ?? '';
+  $('query').value = x.title || '';
+  $('price').value = '';
+  $('area').value = '';
+  $('province').value = x.province_id || '';
+  districts();
+  // Listings with an untrusted location have no entry in the district filter: the value stays blank.
+  $('district').value = x.district_id || '';
+  if ($('district').selectedIndex < 0) $('district').value = '';
+  seed = x;
+  seedForm = formValues();
+  renderSeed();
+  updateMode();
+  $('criteria').classList.remove('flash');
+  void $('criteria').offsetWidth;
+  $('criteria').classList.add('flash');
+}
+
+function preferencesRequest() {
+  const sale = $('market').value === 'sale';
+  const r = {transaction_type:$('market').value, property_category:$('category').value, price_period:sale ? 'total' : $('period').value};
+  for (const [id, key] of [['target_price','target_price'], ['price','max_price'], ['target_area','target_area'], ['area','min_area'], ['bedrooms','min_bedrooms']])
+    if ($(id).value !== '') r[key] = Number($(id).value);
+  if ($('province').value) r.province_id = $('province').value;
+  if (!$('district').disabled && $('district').value) r.district_id = $('district').value;
+  if ($('query').value.trim()) r.query = $('query').value.trim();
+  return r;
+}
+
+async function runSearch() {
+  const edited = !seed || JSON.stringify(formValues()) !== JSON.stringify(seedForm);
+  // A fetched listing is not in the model index, so it can only seed a criteria search.
+  const method = edited || seed.live ? 'preferences' : 'similar';
+  const limit = Number($('limit').value);
+  const request = method === 'similar' ? {listing_key:seed.listing_key, limit} : {...preferencesRequest(), limit};
+  $('results-head').classList.add('hidden');
+  $('results').innerHTML = '<div class="list"><div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div></div>';
+  try {
+    result = await api('/recommend', {method, request});
+  } catch (e) {
+    $('results').innerHTML = `<div class="panel state"><h3>Chưa gợi ý được</h3>${esc(e.message)}</div>`;
+    throw e;
+  }
+  resultSeed = seed;
+  $('results-head').classList.remove('hidden');
+  $('result-title').textContent = method === 'similar' ? 'Các tin tương tự tin gốc' : seed && !edited ? 'Các tin gần với tin vừa lấy' : 'Các tin theo tiêu chí';
+  $('result-meta').innerHTML = `${result.items.length} kết quả · model v${esc(result.version)} · <a href="#grading">Chấm kết quả này</a>`;
+  $('results').innerHTML = result.items.length
+    ? `<div class="list">${result.items.map((x, i) => resultCard(x, i+1)).join('')}</div>`
+    : '<div class="panel state"><h3>Không có tin thỏa tiêu chí</h3>Hãy nới bớt điều kiện như quận/huyện, phòng ngủ hoặc từ khóa.</div>';
+  taskSource();
+}
+
+async function useListing(x) {
+  $('picks').innerHTML = '';
+  await fillFromSeed(x);
+  $('lookup').value = listingId(x);
+  try { history.replaceState(null, '', `?id=${encodeURIComponent(listingId(x))}${location.hash}`); } catch {}
+  await runSearch();
+  // On a phone the form is long and sits above the results.
+  if (matchMedia('(max-width:900px)').matches) $('seed-card').scrollIntoView();
+}
+
+// Anything that resolves as an id wins; otherwise callers treat the text as a title search.
+// A Nhà Tốt link or id missing from the model data is fetched from Nhà Tốt now.
+const LIVE_ID = /^\s*\d{6,}\s*$|(nhatot|chotot)\.com\//i;
+async function findListing(text) {
+  for (const path of ['/listing', '/listing/live']) {
+    if (path === '/listing/live' && !LIVE_ID.test(text)) return null;
+    try {
+      return await api(path+'?id='+encodeURIComponent(text), undefined);
+    } catch (e) {
+      if (e.status !== 404) throw e;
+    }
+  }
+  return null;
+}
+
+function renderPicks(box, text, items, onPick, extraClass='') {
+  box.innerHTML = items.length
+    ? `<div class="picks ${extraClass}"><div class="picks-head">Không có mã tin này. Các tin có tiêu đề khớp với “${esc(text)}”:</div>${items.map(x => `<button type="button" class="pick" data-key="${esc(x.listing_key)}"><span>${esc(x.title || x.listing_key)}</span><small class="num">${esc(hasPrice(x) ? vnd(x.price_vnd) : '')} · ${esc(x.transaction_type === 'sale' ? 'Mua bán' : 'Cho thuê')}</small></button>`).join('')}</div>`
+    : `<div class="picks ${extraClass}"><div class="picks-head">Không tìm thấy tin nào khớp với “${esc(text)}”. Tin có thể không còn trong dữ liệu của model.</div></div>`;
+  box.querySelectorAll('.pick').forEach(b => {
+    b.onclick = () => onPick(items.find(x => x.listing_key === b.dataset.key)).catch(e => notice(e.message, true));
+  });
+}
+
+async function lookup(text) {
+  const version = ++lookupVersion;
+  const listing = await findListing(text);
+  if (version !== lookupVersion) return;
+  if (listing) { await useListing(listing); return; }
+  const [rent, sale] = await Promise.all(['rent', 'sale'].map(m => api(`/catalog?market=${m}&q=${encodeURIComponent(text)}&limit=4`)));
+  if (version !== lookupVersion) return;
+  renderPicks($('picks'), text, [...rent.items, ...sale.items], useListing);
+}
+
+$('lookup-form').onsubmit = async event => {
+  event.preventDefault();
+  const text = $('lookup').value.trim();
+  if (!text) { notice('Nhập mã tin, link tin hoặc từ khóa.', true); return; }
+  const b = $('lookup-go');
+  b.disabled = true;
+  try { await lookup(text); } catch (e) { notice(e.message, true); } finally { b.disabled = false; }
+};
+
+$('results').onclick = event => {
+  const b = event.target.closest('[data-seed]');
+  if (!b) return;
+  api('/listing?id='+encodeURIComponent(b.dataset.seed), undefined)
+    .then(useListing)
+    .then(() => $('seed-card').scrollIntoView({block:'center'}))
+    .catch(e => notice(e.message, true));
+};
+
+$('market-segment').onclick = event => {
+  const b = event.target.closest('button');
+  if (!b || b.dataset.market === $('market').value) return;
+  setMarket(b.dataset.market);
+  filters().then(updateMode).catch(e => notice(e.message, true));
+  updateMode();
+};
+$('province').onchange = () => { districts(); updateMode(); };
+$('criteria').addEventListener('input', updateMode);
+$('criteria').addEventListener('change', updateMode);
+$('criteria').onsubmit = event => { event.preventDefault(); $('search').click(); };
+action('search', runSearch);
+
+async function samples() {
+  const [rent, sale] = await Promise.all(['rent', 'sale'].map(m => api(`/catalog?market=${m}&limit=2`)));
+  const items = [...rent.items.map(x => [x, 'Thuê']), ...sale.items.map(x => [x, 'Bán'])];
+  if (!items.length) return;
+  $('samples').innerHTML = '<span>Thử mã mẫu:</span>' + items.map(([x, tag]) => `<button type="button" class="chip-btn num" data-id="${esc(listingId(x))}">${esc(tag)} · ${esc(String(listingId(x)).slice(0, 12))}</button>`).join('');
+  $('samples').querySelectorAll('button').forEach(b => {
+    b.onclick = () => { $('lookup').value = b.dataset.id; $('lookup-form').requestSubmit(); };
+  });
+}
+
+async function model() {
+  try {
+    const m = await api('/model');
+    const total = m.markets.sale.rows + m.markets.rent.rows;
+    const asOf = new Date(m.as_of).toLocaleDateString('vi-VN');
+    $('model').innerHTML = `<i class="dot ok"></i>Model v${esc(m.version)} · ${esc(count(total))} tin · dữ liệu ${esc(asOf)}`;
+    $('model').title = `Mua bán: ${count(m.markets.sale.rows)} · Cho thuê: ${count(m.markets.rent.rows)}`;
+  } catch (e) {
+    $('model').innerHTML = '<i class="dot bad"></i>Chưa nạp được model';
+    throw e;
+  }
+}
+
+/* ---------- Tabs ---------- */
+function showTab() {
+  const name = ['discover', 'grading', 'pricing'].includes(location.hash.slice(1)) ? location.hash.slice(1) : 'discover';
+  for (const tab of ['discover', 'grading', 'pricing']) $('tab-'+tab).classList.toggle('hidden', tab !== name);
+  document.querySelectorAll('.tabs a').forEach(a => {
+    if (a.dataset.tab === name) a.setAttribute('aria-current', 'page');
+    else a.removeAttribute('aria-current');
+  });
+  window.scrollTo(0, 0);
+}
+addEventListener('hashchange', showTab);
+
+/* ---------- Grading ---------- */
+function taskSource() {
+  $('task-source').textContent = result && result.items.length
+    ? `Kết quả đang có: ${result.items.length} tin (${result.method === 'similar' ? 'tương tự tin gốc' : 'theo tiêu chí'})`
+    : 'Chưa có kết quả gợi ý nào. Hãy tìm ở tab Gợi ý trước.';
+}
+
+async function tasks() {
+  const rows = await api('/tasks');
+  $('tasks').innerHTML = '<option value="">Chọn phiếu</option>' + rows.map(t => `<option value="${esc(t.query_id)}">${esc(t.annotator)} · ${esc(t.split)} · v${esc(t.model_version)} · ${Object.values(t.relevance).filter(v => v !== null).length}/${Object.keys(t.relevance).length} · ${esc(t.query_id.slice(0, 8))}</option>`).join('');
+  if (task) $('tasks').value = task.query_id;
+}
+
+function gradeItem(x) {
+  return `<h3>${esc(x.title || x.listing_key)}</h3><div style="margin-top:2px">${priceHtml(x)}</div>${metaHtml(x)}
+    <details><summary>Mô tả tin</summary><p class="desc">${esc(x.description || 'Không có mô tả')}</p></details>
+    <div class="item-actions">${openLink(x)}<span class="num" style="color:var(--faint)">Mã ${esc(listingId(x))}</span></div>`;
+}
+
+function renderTask() {
+  const done = Object.values(task.relevance).filter(v => v !== null).length, total = task.items.length;
+  $('task-panel').classList.remove('hidden');
+  $('metrics-output').innerHTML = '';
+  $('task-context').innerHTML = `<h2>Phiếu ${esc(task.query_id.slice(0, 8))} · ${done}/${total} đã chấm</h2>
+    <p class="page-lead">Model v${esc(task.model_version)} · ${esc(task.split)} · K=${esc(task.k)}</p>
+    <details open><summary>Nhu cầu được cố định khi tạo phiếu</summary><pre>${esc(JSON.stringify({method:task.method, request:task.request, as_of:task.as_of}, null, 2))}</pre>${task.seed ? `<div class="hint" style="margin-top:10px"><b>Tin gốc</b>${gradeItem(task.seed)}</div>` : ''}</details>`;
+  $('grades').innerHTML = task.items.map((x, i) => `<div class="grade-card">${gradeItem(x)}
+    <div class="grade-row">
+      <label>Nhãn<select id="grade-${i}"><option value="">Chưa chấm</option>${[0,1,2,3].map(n => `<option value="${n}" ${task.relevance[x.listing_key] === n ? 'selected' : ''}>${n} — ${['Không phù hợp','Hơi phù hợp','Phù hợp','Rất phù hợp'][n]}</option>`).join('')}</select></label>
+      <label>Ghi chú<input id="note-${i}" maxlength="2000" value="${esc(task.notes[x.listing_key] || '')}"></label>
+      <button id="save-${i}" class="btn ghost">Lưu nhãn</button>
+    </div></div>`).join('');
+  task.items.forEach((x, i) => action('save-'+i, async () => {
+    const v = $('grade-'+i).value;
+    task = await api('/tasks/'+task.query_id, {listing_key:x.listing_key, grade:v === '' ? null : Number(v), note:$('note-'+i).value, version:task.version}, 'PATCH');
+    notice('Đã lưu nhãn.');
+    renderTask();
+  }));
+  $('export').innerHTML = done === total
+    ? `<button id="metrics" class="btn ghost">Xem chỉ số của phiếu</button><a href="/export?task_id=${esc(task.query_id)}&format=jsonl">Tải JSONL để đánh giá mô hình</a><a href="/export?task_id=${esc(task.query_id)}&format=csv">Tải CSV</a>`
+    : '<span style="color:var(--muted)">Chấm đủ mọi ứng viên để xuất kết quả.</span>';
+  if (done === total) action('metrics', async () => {
+    const r = await api('/tasks/'+task.query_id+'/metrics');
+    $('metrics-output').innerHTML = Object.entries(r.metrics).map(([group, values]) => `<h3 style="margin-top:16px;font-size:15px">${esc(group)}</h3><div class="tiles">${Object.entries(values).map(([k, v]) => `<div class="tile"><small>${esc(k)}</small><strong class="num">${esc(typeof v === 'number' && !Number.isInteger(v) ? v.toFixed(3) : v ?? '—')}</strong></div>`).join('')}</div>`).join('') + `<p class="page-lead" style="margin-top:10px">${esc(r.scope)}</p>`;
+  });
+}
+
+action('create-task', async () => {
+  if (!result || !result.items.length) throw Error('Hãy tìm gợi ý trước.');
+  task = await api('/tasks', {method:result.method, request:result.request, model_version:result.version, annotator:$('annotator').value, split:$('split').value, k:Number($('k').value)});
+  await tasks();
+  renderTask();
+  notice('Đã lưu phiếu. Chấm từng tin và bấm Lưu nhãn.');
+});
+action('refresh-tasks', tasks);
+$('tasks').onchange = async () => {
+  if (!$('tasks').value) return;
+  try { task = await api('/tasks/'+$('tasks').value); renderTask(); } catch (e) { notice(e.message, true); }
+};
+
+/* ---------- Price prediction ---------- */
+let priceOptions = null, priceReady = null, priceSeed = null, priceSeedForm = null, priceLookupVersion = 0;
+// Same grouping as dbt/models/gold/dimensions/dim_legal_status.sql, which the model was trained on.
+const LEGAL_CATEGORY = {'Đã có sổ':'Có sổ', 'Sổ hồng riêng':'Có sổ', 'Sổ chung / công chứng vi bằng':'Có sổ', 'Đang chờ sổ':'Đang chờ sổ',
+  'Hợp đồng mua bán':'Giấy tờ khác', 'Hợp đồng đặt cọc':'Giấy tờ khác', 'Giấy tờ viết tay':'Giấy tờ khác', 'Giấy tờ khác':'Giấy tờ khác', 'Không có sổ':'Không có sổ'};
+// Every flag is always sent: training data has no nulls here, and a null lowers the prediction by about 27%.
+const PRICE_FLAGS = ['has_car_alley', 'is_frontage', 'is_planning_affected', 'is_wide_back', 'is_narrow_back', 'is_dilapidated', 'is_not_completed'];
+const PRICE_FIELDS = ['p-type', 'p-subtype', 'p-district', 'p-ward', 'p-area', 'p-living', 'p-width', 'p-length', 'p-bedrooms', 'p-bathrooms', 'p-floors', 'p-floor', 'p-legal', 'p-furnishing', 'p-direction', 'p-handover', 'p-project', ...PRICE_FLAGS.map(key => 'p-'+key)];
+const priceValues = () => Object.fromEntries(PRICE_FIELDS.map(id => [id, $(id).type === 'checkbox' ? $(id).checked : $(id).value.trim()]));
+const priceEdited = () => JSON.stringify(priceValues()) !== JSON.stringify(priceSeedForm);
+const opts = (rows, blank) => (blank === undefined ? '' : `<option value="">${esc(blank)}</option>`) + rows.map(([v, t]) => `<option value="${esc(v)}">${esc(t)}</option>`).join('');
+function priceSubtypes() {
+  const s = priceOptions.subtypes;
+  $('p-subtype').innerHTML = opts((s[$('p-type').value] || s['*'] || []).map(v => [v, v]), 'Không rõ');
+}
+function priceWards() {
+  const rows = priceOptions.wards[$('p-district').value] || [];
+  $('p-ward').innerHTML = opts(rows.map(w => [w.ward_id, w.ward || w.ward_id]), 'Không rõ');
+}
+async function priceForm() {
+  const [o, m] = await Promise.all([api('/price/options'), api('/price/model')]);
+  priceOptions = o;
+  $('p-type').innerHTML = opts(o.property_types.map(v => [v, v]));
+  $('p-district').innerHTML = opts([...o.districts].sort((a, b) => String(a.district).localeCompare(String(b.district), 'vi')).map(d => [d.district_id, d.district || d.district_id]));
+  for (const [id, key] of [['p-legal','legal_categories'], ['p-furnishing','furnishings'], ['p-direction','house_directions'], ['p-handover','handover_statuses']])
+    $(id).innerHTML = opts(o[key].map(v => [v, v]), 'Không rõ');
+  priceSubtypes();
+  priceWards();
+  updatePriceMode();
+  const mape = (m.test_metrics || {}).test_mape;
+  $('price-model').textContent = `Model giá v${m.version}` + (mape == null ? '' : ` · MAPE tập test: ${(mape*100).toFixed(1)}%`);
+}
+$('p-type').onchange = priceSubtypes;
+$('p-district').onchange = priceWards;
+
+// The price model only knows sale listings of the types and districts it was fitted on.
+function priceBlocker(x) {
+  if (x.transaction_type !== 'sale') return 'Đây là tin cho thuê. Model giá chỉ dự đoán giá bán.';
+  if (x.property_category === 'COMMERCIAL') return 'Model giá không hỗ trợ văn phòng, mặt bằng kinh doanh.';
+  if (priceOptions && !priceOptions.property_types.includes(x.property_type)) return 'Model giá không hỗ trợ loại bất động sản này.';
+  if (priceOptions && !priceOptions.districts.some(d => String(d.district_id) === x.district_id)) return 'Model giá chưa có dữ liệu cho quận/huyện của tin này.';
+  return '';
+}
+
+function updatePriceMode() {
+  const box = $('p-mode');
+  const edited = priceSeed && priceEdited();
+  box.className = 'mode' + (priceSeed ? (edited ? ' edited' : ' seeded') : '');
+  if (!priceSeed) box.innerHTML = '<strong>Nhập thủ công</strong>Tự điền form bên dưới, hoặc dán mã/link tin bán Nhà Tốt ở ô phía trên (kể cả tin chưa có trong dữ liệu).';
+  else if (!edited) box.innerHTML = '<strong>Đã điền theo tin gốc</strong>Ô màu xanh được tự điền. Ô trống là tin không có thông tin đó.';
+  else box.innerHTML = '<strong>Đã chỉnh so với tin gốc</strong>Dự đoán tới sẽ không so sánh với giá đăng. <button type="button" class="link-btn" id="p-reset">Khôi phục theo tin gốc</button>';
+  if ($('p-reset')) $('p-reset').onclick = () => { fillPrice(priceSeed); $('price-result').innerHTML = ''; };
+  for (const id of PRICE_FIELDS) {
+    if ($(id).type === 'checkbox') continue;
+    $(id).closest('label').classList.toggle('filled', Boolean(priceSeedForm && priceSeedForm[id] && $(id).value.trim() === priceSeedForm[id]));
+  }
+}
+$('price-fields').addEventListener('input', updatePriceMode);
+$('price-fields').addEventListener('change', updatePriceMode);
+$('price-flags').addEventListener('change', updatePriceMode);
+
+function setOption(id, value) {
+  $(id).value = value ?? '';
+  // A value the model was not fitted on has no option: show it as unknown.
+  if ($(id).selectedIndex < 0) $(id).value = '';
+}
+
+function fillPrice(x) {
+  const within = (value, max) => value > 0 && value <= max ? value : '';
+  setOption('p-type', x.property_type);
+  priceSubtypes();
+  setOption('p-subtype', x.property_subtype);
+  setOption('p-district', x.district_id);
+  priceWards();
+  setOption('p-ward', x.ward_id);
+  // Implausible sizes are dropped with the same limits as dbt ml_price_features.
+  $('p-area').value = x.area_m2 ?? '';
+  $('p-living').value = within(x.living_area_m2, 20000);
+  $('p-width').value = within(x.width_m, 100);
+  $('p-length').value = within(x.length_m, 300);
+  $('p-bedrooms').value = x.bedrooms ?? '';
+  $('p-bathrooms').value = x.bathrooms ?? '';
+  $('p-floors').value = x.total_floors ?? '';
+  $('p-floor').value = x.floor_number ?? '';
+  setOption('p-legal', LEGAL_CATEGORY[x.legal_status] || 'Không rõ');
+  setOption('p-furnishing', x.furnishing);
+  setOption('p-direction', x.house_direction);
+  setOption('p-handover', x.handover_status);
+  $('p-project').value = x.project_name || '';
+  for (const key of PRICE_FLAGS) $('p-'+key).checked = Boolean(x[key]);
+  priceSeed = x;
+  priceSeedForm = priceValues();
+  $('p-seed').innerHTML = seedHtml(x, '', 'on-light');
+  updatePriceMode();
+}
+
+async function usePriceListing(x) {
+  $('p-picks').innerHTML = '';
+  $('p-lookup').value = listingId(x);
+  $('price-result').innerHTML = '';
+  const blocked = priceBlocker(x);
+  if (blocked) throw Error(blocked);
+  fillPrice(x);
+  try { history.replaceState(null, '', `?id=${encodeURIComponent(listingId(x))}#pricing`); } catch {}
+  await runPredict();
+}
+
+async function priceLookup(text) {
+  const version = ++priceLookupVersion;
+  await priceReady;
+  const listing = await findListing(text);
+  if (version !== priceLookupVersion) return;
+  if (listing) { await usePriceListing(listing); return; }
+  const sale = await api(`/catalog?market=sale&q=${encodeURIComponent(text)}&limit=20`);
+  if (version !== priceLookupVersion) return;
+  renderPicks($('p-picks'), text, sale.items.filter(x => !priceBlocker(x)).slice(0, 6), usePriceListing, 'on-light');
+}
+
+$('p-lookup-form').onsubmit = async event => {
+  event.preventDefault();
+  const text = $('p-lookup').value.trim();
+  if (!text) { notice('Nhập mã tin, link tin hoặc từ khóa.', true); return; }
+  const b = $('p-lookup-go');
+  b.disabled = true;
+  try { await priceLookup(text); } catch (e) { notice(e.message, true); } finally { b.disabled = false; }
+};
+
+async function priceSamples() {
+  await priceReady;
+  const sale = await api('/catalog?market=sale&limit=20');
+  const items = sale.items.filter(x => !priceBlocker(x)).slice(0, 4);
+  if (!items.length) return;
+  $('p-samples').innerHTML = '<span>Thử mã mẫu:</span>' + items.map(x => `<button type="button" class="chip-btn num" data-id="${esc(listingId(x))}">${esc(String(listingId(x)).slice(0, 12))}</button>`).join('');
+  $('p-samples').querySelectorAll('button').forEach(b => {
+    b.onclick = () => { $('p-lookup').value = b.dataset.id; $('p-lookup-form').requestSubmit(); };
+  });
+}
+
+function versusHtml(predicted) {
+  if (!priceSeed || priceEdited() || !hasPrice(priceSeed)) return '';
+  const pct = Math.round((predicted/priceSeed.price_vnd - 1)*100);
+  return `<div class="versus num">
+    <div><small>Giá đăng của tin</small><b>${esc(vnd(priceSeed.price_vnd))}</b></div>
+    <div><small>Dự đoán so với giá đăng</small><b class="${pct > 0 ? 'up' : pct < 0 ? 'down' : ''}">${pct > 0 ? '+' : pct < 0 ? '−' : ''}${Math.abs(pct)}%</b></div>
+  </div><small style="display:block;margin-top:8px">${priceSeed.live
+    ? 'Tin này vừa lấy từ Nhà Tốt, chưa có trong dữ liệu huấn luyện, nên độ chênh cho thấy sai số của model trên một tin mới.'
+    : 'Tin này có thể nằm trong dữ liệu huấn luyện, nên độ chênh của riêng tin này không đại diện cho sai số của model.'} Giá đăng cũng không phải giá giao dịch thực tế.</small>`;
+}
+
+async function runPredict() {
+  if (!priceOptions) throw Error('Chưa tải được model giá.');
+  if (!(Number($('p-area').value) > 0)) throw Error('Nhập diện tích lớn hơn 0.');
+  const body = {property_type:$('p-type').value, district_id:$('p-district').value, area_m2:Number($('p-area').value)};
+  for (const [id, key] of [['p-subtype','property_subtype'], ['p-ward','ward_id'], ['p-legal','legal_category'], ['p-furnishing','furnishing'], ['p-direction','house_direction'], ['p-handover','handover_status']])
+    if ($(id).value) body[key] = $(id).value;
+  for (const [id, key] of [['p-living','living_area_m2'], ['p-width','width_m'], ['p-length','length_m'], ['p-bedrooms','bedrooms'], ['p-bathrooms','bathrooms'], ['p-floors','total_floors'], ['p-floor','floor_number']])
+    if ($(id).value !== '') body[key] = Number($(id).value);
+  if ($('p-project').value.trim()) body.project_name = $('p-project').value.trim();
+  // The form has no map: use the median coordinates of the ward's training listings.
+  const ward = (priceOptions.wards[body.district_id] || []).find(w => w.ward_id === body.ward_id);
+  if (ward && ward.latitude != null) { body.latitude = ward.latitude; body.longitude = ward.longitude; }
+  for (const key of PRICE_FLAGS) body[key] = $('p-'+key).checked;
+  const r = await api('/price/predict', body);
+  $('price-result').innerHTML = `<div class="estimate"><strong class="num">${esc(vnd(r.predicted_price_vnd))}</strong><div class="num">${esc(count(r.predicted_price_vnd))} ₫ · ${esc(vnd(r.predicted_price_per_m2_vnd))}/m²</div><small>Giá bán ước lượng từ model giá v${esc(r.model_version)}, không phải giá giao dịch thực tế.</small>${versusHtml(r.predicted_price_vnd)}</div>`;
+  $('price-result').scrollIntoView({block:'nearest'});
+}
+action('predict', runPredict);
+
+/* ---------- Start ---------- */
+showTab();
+setMarket('rent');
+updateMode();
+taskSource();
+priceReady = priceForm();
+priceReady.catch(e => { $('price-model').textContent = 'Chưa kết nối được API dự đoán giá: '+e.message; });
+priceSamples().catch(() => {});
+model().catch(e => notice('Chưa nạp được model: '+e.message, true));
+tasks().catch(e => notice(e.message, true));
+samples().catch(() => {});
+filters().then(() => {
+  updateMode();
+  const id = new URLSearchParams(location.search).get('id');
+  if (id && location.hash === '#pricing') { $('p-lookup').value = id; return priceLookup(id); }
+  if (id) { $('lookup').value = id; return lookup(id); }
+}).catch(e => notice(e.message, true));
+</script>
+</body>
+</html>

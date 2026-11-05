@@ -69,6 +69,10 @@ case "$1" in
           --conn-port '7077' \
           --conn-extra '{"deploy-mode": "client"}'
 
+    # One training at a time (train_price_model, train_recommendation_model):
+    # running both at once needs ~6 GB of RAM. Idempotent.
+    airflow pools set ml_training 1 "One ML training at a time to bound RAM"
+
     # The scheduler runs in its own container (airflow-scheduler). Starting a
     # second one here doubles the executor pool and runs tasks in both places.
 

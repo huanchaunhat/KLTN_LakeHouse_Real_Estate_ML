@@ -16,6 +16,11 @@ MAINTENANCE_WEEKDAY = 7
 # The price model retrains once a week (Monday), or whenever triggered by hand.
 TRAINING_WEEKDAY = 1
 
+# Both training DAGs start when Gold passes its tests. They share this 1-slot
+# pool so they run one after the other: together they need ~6 GB of RAM.
+# The pool is created by airflow/script/entrypoint.sh.
+ML_TRAINING_POOL = "ml_training"
+
 # Emitted when Gold passed its tests; schedules the training DAG.
 ML_FEATURES_DATASET = Dataset("lakehouse://gold/ml_price_features")
 RECOMMENDATION_DATASET = Dataset("lakehouse://gold/ml_recommendation_features")
@@ -312,6 +317,7 @@ def train_price_model():
     # the Gold table by name and writes predictions back; sklearn fits ~30k rows.
     train = SparkSubmitOperator(
         task_id="train_price_model",
+        pool=ML_TRAINING_POOL,
         application="/usr/local/airflow/scripts/train_price_model.py",
         conn_id="spark_default",
         conf=TRAIN_CONF,
