@@ -42,6 +42,8 @@ with DAG(
 ) as dag:
     PythonOperator(
         task_id='retrain_register_deploy',
+        # Shared with train_price_model (end_to_end_pipeline.py): one training at a time.
+        pool='ml_training',
         python_callable=retrain,
         retries=1,
         retry_delay=timedelta(minutes=2),

@@ -4,6 +4,7 @@ import io
 import json
 import logging
 import os
+import re
 import secrets
 import sqlite3
 import threading
@@ -23,6 +24,7 @@ from mlflow.tracking import MlflowClient
 from recommendation.contract import file_hash, normalize_text, utc
 from recommendation.registry import MODEL_NAME
 from recommendation.evaluate import evaluate_engine
+from api.app.recommendation import live
 
 ROOT = Path(os.getenv('REIP_STATE', '/state'))
 WEB_ROOT = Path(__file__).resolve().parents[3] / 'web' / 'recommendation'
@@ -158,7 +160,9 @@ def create_app(manager=None, database=None):
         stop.set()
         loader.join(timeout=1)
 
-    app = FastAPI(title='REIP Recommendation API', lifespan=lifespan)
+    # Hide the "Schemas" section at the bottom of Swagger UI.
+    app = FastAPI(title='REIP Recommendation API', lifespan=lifespan,
+                  swagger_ui_parameters={'defaultModelsExpandDepth': -1})
 
     @app.exception_handler(ValueError)
     async def invalid(request, exc):
@@ -177,9 +181,14 @@ def create_app(manager=None, database=None):
         market, index = engine.lookup[key]
         row = engine.markets[market][0].iloc[index]
         out = {}
-        for field in ['listing_key', 'title', 'description', 'price_vnd', 'price_period', 'area_m2',
-                      'bedrooms', 'province', 'district', 'province_id', 'district_id',
-                      'transaction_type', 'property_category', 'url']:
+        for field in ['listing_key', 'source_listing_id', 'title', 'description', 'price_vnd', 'price_period',
+                      'area_m2', 'bedrooms', 'bathrooms', 'province', 'district', 'ward', 'province_id',
+                      'district_id', 'transaction_type', 'property_category', 'property_subtype',
+                      'project_name', 'legal_status', 'furnishing', 'house_direction',
+                      'has_car_alley', 'is_frontage', 'url',
+                      # Only the price form reads these.
+                      'property_type', 'ward_id', 'living_area_m2', 'width_m', 'length_m', 'total_floors',
+                      'floor_number', 'handover_status', 'is_planning_affected']:
             value = row.get(field)
             if field == 'description' and (value is None or pd.isna(value)):
                 value = row.get('content_text')
@@ -189,6 +198,20 @@ def create_app(manager=None, database=None):
                 value = value.item()
             out[field] = value
         return out
+
+    def resolve(engine, value):
+        value = value.strip()
+        if value in engine.lookup:
+            return value
+        # Otherwise a source id, or a listing link ending in one (.../135220851 or .../135220851.htm).
+        match = re.search(r'(\d+)(?:\.htm)?/?(?:[?#].*)?$', value)
+        if match:
+            for df, _, _ in engine.markets.values():
+                if 'source_listing_id' in df:
+                    hits = df.listing_key[df.source_listing_id.astype(str).eq(match[1])]
+                    if len(hits):
+                        return hits.iloc[0]
+        raise HTTPException(404, 'Không có tin này trong dữ liệu của model hiện tại.')
 
     def search(state, body):
         args = (Similar if body.method == 'similar' else Preferences).model_validate(body.request).model_dump(exclude_none=True)
@@ -227,6 +250,24 @@ def create_app(manager=None, database=None):
         if q:
             df = df.loc[df.title.map(normalize_text).str.contains(normalize_text(q), regex=False) | df.listing_key.eq(q)]
         return {'items': [details(state['engine'], k) for k in df.listing_key.head(limit)]}
+
+    @app.get('/listing')
+    def listing(id: str=Query(min_length=1, max_length=500)):
+        engine = manager.get()['engine']
+        return details(engine, resolve(engine, id))
+
+    @app.get('/listing/live')
+    def listing_live(id: str=Query(min_length=1, max_length=500)):
+        """A Nhà Tốt listing fetched now, for links that are not in the model data."""
+        list_id = live.listing_id(id)
+        if list_id is None:
+            raise HTTPException(422, 'Cần link tin Nhà Tốt/Chợ Tốt hoặc mã tin dạng số.')
+        try:
+            return live.fetch(list_id)
+        except live.NotFound:
+            raise HTTPException(404, 'Nhà Tốt không có tin này (sai mã hoặc tin đã gỡ).')
+        except ConnectionError as exc:
+            raise HTTPException(502, str(exc))
 
     @app.get('/filters')
     def filters(market: Literal['sale', 'rent']='rent'):

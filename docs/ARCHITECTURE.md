@@ -44,7 +44,7 @@ flowchart LR
     STS[Spark Thrift Server<br/>1 core / 1 GB]
     SUP[Superset]
     MLF[MLflow<br/>Postgres + MinIO]
-    FA[FastAPI<br/>stub]
+    FA[FastAPI<br/>giá + gợi ý]
 
     API --> T1 --> L1
     L1 --> T2
@@ -70,8 +70,10 @@ flowchart LR
 | `mysql-airflow`, `airflow-webserver`, `airflow-scheduler` | Airflow 2.6.1, LocalExecutor | 8088 | Đang dùng |
 | `superset` | Dashboard, đọc Gold qua Thrift | 8089 | Đang dùng |
 | `postgres` | Backend của MLflow | 5433 | Đang dùng |
-| `mlflow` | Tracking / model registry | 5001 | Chạy, **chưa có code train ghi vào** |
-| `fastapi` | API dự đoán giá | 8000 | **Chỉ có endpoint `/` trả `ok`** |
+| `mlflow` | Tracking / model registry | 5001 | Đang dùng, có `price_model` và `reip_recommendation` |
+| `fastapi` | API dự đoán giá | 8000 | Đang dùng |
+| `recommendation-api` | API gợi ý và web demo | 8501 | Đang dùng |
+| `recommendation-worker` | Nhận lệnh retrain từ Airflow | Nội bộ 8010 | Đang dùng |
 | `kafka` | — | 9094 | **Không có code nào dùng** |
 | [app/](../app/) (Streamlit) | — | — | Có Dockerfile, **không có `main.py`, không có trong compose** |
 
@@ -80,6 +82,8 @@ flowchart LR
 ## 3. Luồng chạy hằng ngày
 
 DAG: [airflow/dags/end_to_end_pipeline.py](../airflow/dags/end_to_end_pipeline.py)
+
+Nhiệm vụ, đầu vào, đầu ra và cách xử lý lỗi của từng task trong cả 3 DAG: xem [AIRFLOW_DAGS.md](AIRFLOW_DAGS.md).
 
 ```
 crawl_nhatot_ids → crawl_nhatot_profiles → load_bronze → dbt_run_silver → dbt_test_silver → dbt_run_gold → dbt_test_gold
@@ -258,7 +262,7 @@ Các quyết định chính:
 - Ổn: query có chú thích, quy ước đơn vị, lọc `is_reliable`, loại nhóm có quá ít tin.
 - Chưa ổn: dashboard chỉ tồn tại trong metadata của Superset (SQLite trong volume), không có export nằm trong git, nên mất volume là mất dashboard. Biến `SQLALCHEMY_DATABASE_URI` trong compose không được [superset_config.py](../superset/superset_config.py) đọc tới, dễ gây hiểu nhầm. Container chạy `pip install` mỗi lần khởi động. Thrift 1 core dùng chung với dbt, nên trong lúc DAG chạy, dashboard sẽ chậm.
 
-**MLflow / FastAPI**: hạ tầng đã có (Postgres backend, artifact trên MinIO), nhưng **repo chưa có code huấn luyện, chưa ghi model vào registry, và API chưa có endpoint dự đoán**. Bài toán 1 hiện mới dừng ở bảng feature.
+**MLflow / FastAPI**: metadata lưu ở Postgres, file model lưu trên MinIO. Airflow train và đăng ký model, còn FastAPI nạp version mang alias `champion` để phục vụ. Chi tiết ở [MLFLOW_VA_FASTAPI.md](MLFLOW_VA_FASTAPI.md).
 
 ---
 
@@ -311,7 +315,7 @@ Ngoài ra chưa có test về **khối lượng dữ liệu**, ví dụ số tin
 | Khả năng mở rộng | ⚠️ Rủi ro | Silver/Gold vẫn rebuild toàn bộ (đã sửa MERGE Bronze, thêm VACUUM, `listing_history` thành view) |
 | Quality gate | ⚠️ Một nửa | Test chạy sau khi đã ghi đè bảng |
 | Quyền riêng tư | ⚠️ Cần sửa | Hash số điện thoại không salt |
-| ML (train, registry, serving) | ❌ Chưa làm | Mới có bảng feature; MLflow và FastAPI là khung rỗng |
+| ML (train, registry, serving) | ✅ Đã có | Model giá có quality gate; model gợi ý mới qua kiểm tra kỹ thuật, chưa đánh giá bằng nhãn người |
 | Tài liệu | ⚠️ | README và SUPERSET_CORRECT_SCHEMAS đã lỗi thời |
 | Bảo mật hạ tầng | ⚠️ Dev-only | Secret trong file config, mount docker.sock |
 
@@ -322,8 +326,8 @@ Ngoài ra chưa có test về **khối lượng dữ liệu**, ví dụ số tin
 **P0 — sửa để số liệu đúng** ✅ đã xong (xem mục 4.6)
 
 **P1 — hoàn thiện bài toán 1**
-4. Viết script train (đọc `gold.ml_price_features`, chia train/test theo `posted_date`, log lên MLflow, đăng ký model).
-5. Thêm endpoint `/predict` vào FastAPI, load model từ registry.
+4. ✅ Viết script train (đọc `gold.ml_price_features`, chia train/test theo `posted_date`, log lên MLflow, đăng ký model).
+5. ✅ Thêm endpoint `/predict` vào FastAPI, load model từ registry.
 
 **P2 — ổn định vận hành**
 6. Audit cho crawl ID và crawl profile (số scope lỗi, scope chạm 20k, tỷ lệ 429/5xx). Fail task khi số tin giảm bất thường.

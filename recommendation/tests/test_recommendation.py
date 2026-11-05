@@ -26,7 +26,8 @@ def fixture():
     for market, price, period in [('sale', 3e9, 'total'), ('rent', 10e6, 'month')]:
         for i in range(6):
             rows.append(dict(
-                listing_key=f'{market}:{i}', transaction_type=market, property_category='HOUSE',
+                listing_key=f'{market}:{i}', source_listing_id=f'{len(rows) + 1000}',
+                transaction_type=market, property_category='HOUSE',
                 price_period=period, price_vnd=price*(1+.02*i), area_m2=80+i,
                 bedrooms=2, bathrooms=1, last_seen_at='2026-10-22T00:00:00Z',
                 is_recommendable=True, location_trusted=True,

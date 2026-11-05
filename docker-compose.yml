@@ -99,6 +99,12 @@ services:
     restart: unless-stopped
     env_file:
       - .env
+    # Overrides .env. A worker has 2 cores, so at most 2 executors of 1 GB heap.
+    # mem_limit adds room for executor overhead, PySpark Python workers and the
+    # worker daemon: past it Docker kills this container (Spark retries the
+    # tasks on the other worker) instead of the host running out of RAM.
+    environment:
+      SPARK_WORKER_MEMORY: 2G
     depends_on:
       spark-master:
         condition: service_healthy
@@ -106,6 +112,7 @@ services:
       - ./spark/spark-defaults.conf:/opt/bitnami/spark/conf/spark-defaults.conf
       - ./spark/hive-site.xml:/opt/bitnami/spark/conf/hive-site.xml
       - ./scripts:/opt/bitnami/spark/scripts
+    mem_limit: 3g
     networks:
       - data_network
 
@@ -116,6 +123,12 @@ services:
     restart: unless-stopped
     env_file:
       - .env
+    # Overrides .env. A worker has 2 cores, so at most 2 executors of 1 GB heap.
+    # mem_limit adds room for executor overhead, PySpark Python workers and the
+    # worker daemon: past it Docker kills this container (Spark retries the
+    # tasks on the other worker) instead of the host running out of RAM.
+    environment:
+      SPARK_WORKER_MEMORY: 2G
     depends_on:
       spark-master:
         condition: service_healthy
@@ -123,6 +136,7 @@ services:
       - ./spark/spark-defaults.conf:/opt/bitnami/spark/conf/spark-defaults.conf
       - ./spark/hive-site.xml:/opt/bitnami/spark/conf/hive-site.xml
       - ./scripts:/opt/bitnami/spark/scripts
+    mem_limit: 3g
     networks:
       - data_network
 
@@ -317,6 +331,9 @@ services:
         condition: service_healthy
       spark-thrift-server:
         condition: service_started
+    # 4 gunicorn workers use ~0.5 GB idle; caps a heavy dashboard query.
+    mem_limit: 1536m
+
   minio-init:
     image: minio/minio:latest  # image này có sẵn mc
     depends_on:
@@ -427,6 +444,7 @@ services:
       --backend-store-uri postgresql://reip:reip123@postgres:5432/reip
       --default-artifact-root s3://mlflow/
       "
+    mem_limit: 1g
     networks:
       - data_network
 
@@ -449,6 +467,8 @@ services:
         condition: service_started
       minio:
         condition: service_started
+    # Holds one XGBoost pipeline (~100 MB idle); reload downloads a new one.
+    mem_limit: 1g
     networks:
       - data_network
 

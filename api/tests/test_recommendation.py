@@ -80,6 +80,43 @@ class DeploymentTests(unittest.TestCase):
                      dict(method='similar', request={'listing_key':'rent:0','as_of':'invalid'})]:
             self.assertEqual(requests.post(self.url+'/recommend', json=body).status_code, 422)
 
+    def test_listing_lookup_by_key_source_id_or_link(self):
+        # rent:0 is the seventh fixture row, so its source id is 1006.
+        for value in ['rent:0', ' 1006 ', 'https://gateway.chotot.com/v1/public/ad-listing/1006',
+                      'https://www.nhatot.com/1006.htm?src=share']:
+            r = requests.get(self.url+'/listing', params={'id': value})
+            self.assertEqual(r.status_code, 200, r.text)
+            self.assertEqual(r.json()['listing_key'], 'rent:0')
+            self.assertEqual(r.json()['transaction_type'], 'rent')
+            self.assertEqual(r.json()['district_id'], '10')
+            self.assertIn('total_floors', r.json())
+        for value in ['999999', 'no-such-listing']:
+            self.assertEqual(requests.get(self.url+'/listing', params={'id': value}).status_code, 404)
+        self.assertEqual(requests.get(self.url+'/listing').status_code, 422)
+
+    def test_live_listing_maps_nhatot_payload_like_staging(self):
+        ad = {'type': 's', 'subject': 'Nhà hẻm', 'price': 2600000000, 'size': 30, 'rooms': 2,
+              'category_name': 'Nhà ở', 'region_v2': 13000, 'area_v2': 13110, 'ward': 9272,
+              'area_name': 'Quận Gò Vấp', 'pty_project_name': ''}
+        params = {'house_type': {'value': 'Nhà ngõ, hẻm'}, 'property_legal_document': {'value': 'Đã có sổ'},
+                  'pty_characteristics': {'value': 'Hẻm xe hơi, Nở hậu'}}
+        gateway = MagicMock(status_code=200, ok=True)
+        gateway.json.return_value = {'ad': ad, 'ad_params': params}
+        with patch('api.app.recommendation.live.session.get', return_value=gateway) as get:
+            r = requests.get(self.url+'/listing/live', params={'id': 'https://www.nhatot.com/mua-ban/135658788.htm?src=x'})
+        self.assertEqual(r.status_code, 200, r.text)
+        self.assertTrue(get.call_args[0][0].endswith('/135658788'))
+        x = r.json()
+        self.assertEqual((x['transaction_type'], x['property_category'], x['price_period']), ('sale', 'HOUSE', 'total'))
+        self.assertEqual((x['district_id'], x['ward_id'], x['property_subtype']), ('13110', '9272', 'Nhà ngõ, hẻm'))
+        self.assertEqual((x['has_car_alley'], x['is_wide_back'], x['is_frontage']), (True, True, False))
+        self.assertIsNone(x['project_name'])
+        self.assertTrue(x['live'])
+        gateway.json.return_value = {}
+        with patch('api.app.recommendation.live.session.get', return_value=gateway):
+            self.assertEqual(requests.get(self.url+'/listing/live', params={'id': '135658788'}).status_code, 404)
+        self.assertEqual(requests.get(self.url+'/listing/live', params={'id': 'https://example.com/1.htm'}).status_code, 422)
+
     def test_frozen_labels_zero_missing_conflict_export_and_metrics(self):
         task = self.task()
         url = self.url+'/tasks/'+task['query_id']
