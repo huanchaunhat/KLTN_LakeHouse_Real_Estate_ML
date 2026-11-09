@@ -174,7 +174,7 @@ Chỉ cho đi tiếp vào **thứ Hai**, hoặc khi DAG được bấm chạy ta
 | Ghi | Run và model version trong MLflow (`price_model`), bảng `gold.ml_price_predictions`, alias `champion` nếu đạt gate |
 
 Các bước:
-1. Tách tập test theo thời gian: các tin đăng trong **10 ngày gần nhất** làm tập test, phần còn lại để train.
+1. Tách tập test theo thời gian: sắp tin theo ngày đăng, lấy **20% tin mới nhất** làm tập test (cắt trọn ngày, không ngày nào nằm ở cả hai tập), phần còn lại để train.
 2. Train XGBoost, đo MAPE, so với baseline (giá trung vị theo m² của từng cặp quận × loại bất động sản) và **với champion hiện tại trên cùng tập test**.
 3. **Quality gate:** chỉ chuyển alias `champion` sang version mới khi model mới tốt hơn baseline và MAPE không cao hơn champion. Không đạt thì version vẫn được lưu trong MLflow nhưng API giữ model cũ.
 

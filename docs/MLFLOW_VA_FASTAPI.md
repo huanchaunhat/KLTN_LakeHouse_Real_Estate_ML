@@ -70,7 +70,7 @@ Tất cả container nằm chung network `data_network` của Docker, nên chún
 |---|---|---|
 | Experiment | Nhóm các lần train của một bài toán | `price_prediction`, `reip_recommendation` |
 | Run | Một lần train cụ thể | Run `758779c2…` tạo ra `price_model` v11 |
-| Param | Cấu hình đầu vào của run | `rows_train`, `test_days` |
+| Param | Cấu hình đầu vào của run | `rows_train`, `test_fraction` |
 | Metric | Kết quả đo được | `test_mape`, `baseline_mape` |
 | Tag | Nhãn mô tả tự do | `algorithm=xgboost`, `gate=promoted` |
 | Artifact | File do run sinh ra | Model, `feature_spec.json` |

@@ -7,7 +7,8 @@ Output: an MLflow run + a version of the registered model `price_model`
         (alias `champion` only when it passes the quality gate), and
         gold.ml_price_predictions with the candidate's predictions.
 
-The split is by posted_date: the newest --test-days are held out, the model
+The split is by posted_date: the newest --test-fraction of listings (whole
+days only) is held out, the model
 is trained on older listings only and is deployed as trained (no refit), so
 comparing it to the current champion on the same holdout is out-of-time for
 both models.
@@ -35,6 +36,8 @@ from sklearn.model_selection import train_test_split
 from sklearn.pipeline import Pipeline, make_pipeline
 from sklearn.preprocessing import OrdinalEncoder, TargetEncoder
 from xgboost import XGBRegressor
+
+from price_features import AREA_COLUMNS, AREA_GROUPS, AreaPriceEncoder, PricePerM2Regressor
 
 FEATURE_TABLE = "gold.ml_price_features"
 PREDICTION_TABLE = "gold.ml_price_predictions"
@@ -178,7 +181,11 @@ def log_metrics(results, prefix, title):
 def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--run-id", required=True, help="Airflow run id, for lineage")
-    parser.add_argument("--test-days", type=int, default=10)
+    parser.add_argument(
+        "--test-fraction", type=float, default=0.2,
+        help="Share of the newest listings held out as the test set (whole days, "
+             "so no posting day is split between train and test)",
+    )
     parser.add_argument("--min-train-rows", type=int, default=5000)
     parser.add_argument("--min-test-rows", type=int, default=1000)
     parser.add_argument(
@@ -304,6 +311,8 @@ def _tree_preprocessor():
             ("num", "passthrough", NUMERIC + BOOLEAN),
             ("low", low_card, LOW_CARD),
             ("high", _high_card_encoder(), HIGH_CARD),
+            # Average price/m2 of the listing's ward, street, project, ... (out-of-fold).
+            ("area", AreaPriceEncoder(), AREA_COLUMNS),
         ],
         verbose_feature_names_out=False,
     ).set_output(transform="pandas")
@@ -313,14 +322,20 @@ def build_candidates():
     """The model trained on every run. The comparison of algorithms (Ridge,
     RandomForest, HistGBM, XGBoost, CatBoost) lives in
     notebooks/price_model_comparison.ipynb; XGBoost won it (19.84% MAPE), so
-    production trains only that one. Kept as a dict so the evaluation and
-    model_comparison.csv need no change if a candidate is added back."""
-    log("model 'xgboost': ordinal + target encoding -> XGBRegressor "
-        "(boosting with regularised leaves and row/column sampling)")
+    production trains only that one. notebooks/price_model_improvements.ipynb
+    added the price/m2 target and the area features (20.21% -> 19.73% MAPE).
+    Kept as a dict so the evaluation and model_comparison.csv need no change
+    if a candidate is added back."""
+    log("model 'xgboost': ordinal + target encoding + area price/m2 features "
+        "-> XGBRegressor (boosting with regularised leaves and row/column sampling)")
+    log("the trees learn log(price / area_m2); predict() adds log(area_m2) back, "
+        "so it still returns log price like earlier versions")
     log("high-card columns {} use a cross-fitted TargetEncoder, so a row's "
         "own price never leaks".format(HIGH_CARD))
+    log("area features: smoothed mean log price/m2 + listing count per {} "
+        "(out-of-fold on the training rows)".format(list(AREA_GROUPS)))
     return {
-        "xgboost": Pipeline([
+        "xgboost": PricePerM2Regressor(Pipeline([
             ("prep", _tree_preprocessor()),
             ("model", XGBRegressor(
                 n_estimators=800,
@@ -334,7 +349,7 @@ def build_candidates():
                 n_jobs=2,
                 random_state=42,
             )),
-        ]),
+        ])),
     }
 
 
@@ -370,12 +385,17 @@ def log_fitted_preprocessor(pipeline, x_train):
             "max_encoded": round(float(np.max(encoding)), 3),
         })
     log_block(
-        "TargetEncoder learned these mappings, in {} units (the global "
-        "fallback for unseen levels is {:.3f})".format(
-            TARGET, float(encoder.target_mean_)),
+        "TargetEncoder learned these mappings, in log(price/m2) units (the "
+        "global fallback for unseen levels is {:.3f})".format(
+            float(encoder.target_mean_)),
         pd.DataFrame(rows).to_string(index=False))
     log("a low rows_per_level means that encoding rests on few listings and "
         "is therefore noisy")
+
+    groups = fitted["area"][1].stats_[0]
+    log_block("AreaPriceEncoder learned these groups (log price/m2)", pd.DataFrame([
+        {"group": name, "levels": len(stats), "median_listings": float(stats["count"].median())}
+        for name, stats in groups.items()]).to_string(index=False))
 
     # The encoders are the one place where the data stops being readable, so
     # show the same rows as text and as the numbers the trees actually get.
@@ -554,7 +574,8 @@ def main():
     args = parse_args()
     log_step(1, "SETUP", "parse arguments and start the Spark session")
     log("run_id              = {}".format(args.run_id))
-    log("test_days           = {} (size of the out-of-time holdout)".format(args.test_days))
+    log("test_fraction       = {:.0%} (newest listings held out, out-of-time)".format(
+        args.test_fraction))
     log("min_train_rows      = {:,}".format(args.min_train_rows))
     log("min_test_rows       = {:,}".format(args.min_test_rows))
     log("max_mape_regression = {}".format(args.max_mape_regression))
@@ -574,9 +595,12 @@ def main():
     log_block("rows per property_type",
               df["property_type"].value_counts().head(10).to_string())
 
-    log_step(3, "SPLIT", "hold out the newest {} days by posted_date".format(args.test_days))
+    log_step(3, "SPLIT", "hold out the newest {:.0%} of listings by posted_date".format(
+        args.test_fraction))
     df["posted_date"] = pd.to_datetime(df["posted_date"])
-    cutoff = df["posted_date"].max() - pd.Timedelta(days=args.test_days)
+    # Cut at the posting day below which (1 - fraction) of the listings fall;
+    # everything posted after that day is test.
+    cutoff = df["posted_date"].quantile(1 - args.test_fraction).normalize()
     is_test = df["posted_date"] > cutoff
     train, test = df[~is_test], df[is_test]
     log("cutoff posted_date = {}".format(cutoff.date()))
@@ -593,9 +617,9 @@ def main():
             args.min_train_rows, args.min_test_rows))
         raise SystemExit("Not enough rows: train={}, test={}".format(len(train), len(test)))
     log("row-count check passed")
-    log("test share = {:.1%} of all rows (the time split has no fixed ratio: "
-        "it holds out whatever was posted in the last {} days)".format(
-            len(test) / len(df), args.test_days))
+    log("test share = {:.1%} of all rows (target {:.0%}; whole days only, so "
+        "it lands slightly below the target), {} posting days".format(
+            len(test) / len(df), args.test_fraction, test["posted_date"].nunique()))
 
     log_step(4, "PREPROCESS", "cast features to the dtypes the pipeline expects")
     log("the API applies this very same function (logged as feature_spec.json), "
@@ -623,7 +647,7 @@ def main():
         })
         mlflow.log_params({
             "rows_total": len(df), "rows_train": len(train), "rows_test": len(test),
-            "test_days": args.test_days, "cutoff_posted_date": str(cutoff.date()),
+            "test_fraction": args.test_fraction, "cutoff_posted_date": str(cutoff.date()),
             "train_posted_from": str(train["posted_date"].min().date()),
             "test_posted_to": str(test["posted_date"].max().date()),
         })
@@ -712,6 +736,7 @@ def main():
             spec = {
                 "numeric": NUMERIC, "boolean": BOOLEAN, "categorical": CATEGORICAL,
                 "features": FEATURES, "missing_token": MISSING, "target": TARGET,
+                # predict() returns log price (it learns log price/m2 internally).
                 "target_transform": "log",
             }
             with open(os.path.join(tmp, "feature_spec.json"), "w") as f:
@@ -747,6 +772,9 @@ def main():
             pipeline, artifact_path="model",
             registered_model_name=MODEL_NAME,
             input_example=x_test.head(3),
+            # The API unpickles PricePerM2Regressor/AreaPriceEncoder from here.
+            code_paths=[os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                     "price_features.py")],
         )
         new_version = client.search_model_versions(
             "run_id='{}'".format(run.info.run_id))[0].version
