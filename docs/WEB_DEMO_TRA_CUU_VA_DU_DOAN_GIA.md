@@ -182,7 +182,7 @@ Tin đăng và model giá không dùng chung mọi giá trị, nên cần một 
 - **Tọa độ:** form không có bản đồ, nên trang dùng tọa độ trung vị của phường lấy từ `form_options.json`. Không chọn phường thì không gửi tọa độ.
 - **Các ô tick:** luôn gửi `true` hoặc `false`, kể cả khi không tick.
 
-Điểm cuối rất quan trọng. Dữ liệu train không có giá trị rỗng ở các cột này, và theo ghi chú trong code, gửi `null` làm giá dự đoán giảm khoảng 27%. Vì vậy **gọi thẳng `POST /predict` mà bỏ các cờ này sẽ ra số khác với web**.
+Dữ liệu train không có giá trị rỗng ở các cột này: tin không nhắc tới đặc điểm nào thì cờ đó là `false`. API giá cũng mặc định các cờ này là `false` khi người gọi bỏ trống, nên gọi thẳng `POST /predict` cho cùng kết quả với web. (Trước đây cờ bỏ trống thành `null`, làm giá dự đoán giảm khoảng 27%.)
 
 ### 4.4 Cách đọc kết quả
 

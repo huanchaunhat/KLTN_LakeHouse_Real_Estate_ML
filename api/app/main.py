@@ -48,14 +48,17 @@ class PropertyInput(BaseModel):
     furnishing: str | None = None
     handover_status: str | None = None
     legal_category: str | None = None
+    # Derived from legal_category when omitted (see to_frame); may stay unknown.
     has_certificate: bool | None = None
-    has_car_alley: bool | None = None
-    is_frontage: bool | None = None
-    is_wide_back: bool | None = None
-    is_narrow_back: bool | None = None
-    is_dilapidated: bool | None = None
-    is_not_completed: bool | None = None
-    is_planning_affected: bool | None = None
+    # Training sets these flags from the listing's characteristics list, so a
+    # flag that is not mentioned means False, never unknown.
+    has_car_alley: bool = False
+    is_frontage: bool = False
+    is_wide_back: bool = False
+    is_narrow_back: bool = False
+    is_dilapidated: bool = False
+    is_not_completed: bool = False
+    is_planning_affected: bool = False
 
 
 class Prediction(BaseModel):

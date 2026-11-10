@@ -294,7 +294,7 @@ Ngoài ra chưa có test về **khối lượng dữ liệu**, ví dụ số tin
 - ~~Không bảo trì Delta~~ **Đã thêm:** task `is_maintenance_day → delta_maintenance` ở cuối DAG chạy vào Chủ nhật hằng tuần (macro [delta_maintenance.sql](../dbt/macros/delta_maintenance.sql)). Task này `OPTIMIZE` Bronze và chạy `VACUUM … RETAIN 168 HOURS` cho Bronze cùng mọi bảng Silver/Gold, giữ lại 7 ngày time travel để có thể rollback.
 - **Secret nằm trong code**: `minio/minio123` trong [spark-defaults.conf](../spark/spark-defaults.conf), [metastore-site.xml](../hive-metastore/metastore-site.xml) và giá trị mặc định của DAG. `reip/reip123` và `admin/admin` nằm trong compose và metastore config. Môi trường dev thì chấp nhận được, nhưng nên ghi rõ trong luận văn và đọc từ `.env`.
 - **Airflow mount `/var/run/docker.sock`**, còn [active_docker_deamon.sh](../active_docker_deamon.sh) chạy `chmod 666` cho socket. Như vậy container Airflow có quyền root trên máy host. DAG hiện không cần quyền này, nên bỏ mount.
-- Image chưa ghim phiên bản: `minio/minio:latest`, `ghcr.io/mlflow/mlflow:latest`. Build lại vào thời điểm khác có thể ra kết quả khác.
+- Image chưa ghim phiên bản: `minio/minio:latest` (MLflow đã ghim `v3.16.1`). Build lại vào thời điểm khác có thể ra kết quả khác.
 - Chưa có cảnh báo khi DAG fail hay SLA. `retries=1` cho cả các task crawl dài.
 - Phải tạo connection `spark_default` bằng tay (README). Có thể khai báo qua biến môi trường `AIRFLOW_CONN_SPARK_DEFAULT`.
 - Rác trong repo: [airflow/jars/](../airflow/jars/) có jar không dùng (`hadoop-aws-3.3.4`, `aws-java-sdk-1.12.367`, `s3-2.18.41`, `mysql-connector-java-8.0.19`). [env.sh](../env.sh) trỏ tới `real_estate_data/` đang rỗng. Service `kafka` không ai dùng, chỉ tốn RAM trên máy 8 GB.

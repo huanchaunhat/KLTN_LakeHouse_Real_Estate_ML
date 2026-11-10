@@ -417,7 +417,7 @@ Các điểm dưới đây chưa được sửa:
 2. **`POST /model/reload` không cần xác thực**, và cổng 8000 mở trên mọi network interface của máy, trong khi `/admin/reload` có token và cổng 8501 chỉ bind `127.0.0.1`. Chấp nhận được với môi trường demo, không phù hợp để đưa ra ngoài.
 3. **API giá không tự thử nạp lại model** khi lần đầu thất bại ([mục 7.4](#74-khi-khởi-động-nếu-mlflow-chưa-sẵn-sàng)).
 4. **Có một khoảng rất ngắn trả 503 khi reload API giá**, do `_state.clear()` chạy trước `_state.update()`.
-5. **Image `mlflow:latest` chưa ghim version**, nên build lại lúc khác có thể ra phiên bản khác. Mật khẩu Postgres của MLflow cũng được ghi thẳng trong `docker-compose.yml`.
+5. Mật khẩu Postgres của MLflow cũng được ghi thẳng trong `docker-compose.yml`.
 6. **Image `kltn-fastapi` đang chạy vẫn còn `catboost`**, trong khi `api/requirements.txt` đã bỏ. Việc này không gây lỗi và sẽ hết khi build lại.
 7. **Model gợi ý được lên champion chỉ nhờ kiểm tra kỹ thuật** (`promotion_policy=mechanical_checks_only_demo`). Chất lượng gợi ý chưa được chứng minh bằng nhãn của người thật.
 
