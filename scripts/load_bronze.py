@@ -116,6 +116,8 @@ def load_bronze(spark, args):
     df = add_missing_column(df, "http_status", lit(200))
     df = add_missing_column(df, "url", concat(lit(DETAIL_URL), col("source_listing_id").cast("string")))
     df = add_missing_column(df, "error", lit(None).cast("string"))
+    # "csv" when written by ingest_csv.py; the crawler does not set it.
+    df = add_missing_column(df, "ingest_source", lit("crawl"))
 
     df = (
         df

@@ -40,6 +40,7 @@ select
     listing_key,
     observation_id,
     source,
+    ingest_source,
     source_listing_id,
     snapshot_id,
     crawl_date,

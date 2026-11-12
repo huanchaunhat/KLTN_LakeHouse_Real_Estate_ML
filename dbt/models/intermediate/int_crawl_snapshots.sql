@@ -25,14 +25,26 @@ with stats as (
         snapshot_finished_at,
         online_listing_count,
         valid_listing_count,
-        gone_listing_count
+        gone_listing_count,
+        -- Runs counted before the column existed are crawls.
+        coalesce(is_csv_upload, false) as is_csv_upload
     from {{ ref('int_crawl_snapshot_stats') }}
 ),
 
 flagged as (
     select
-        *,
-        online_listing_count >= {{ var('full_snapshot_min_ratio') }} * max(online_listing_count) over ()
+        snapshot_id,
+        snapshot_started_at,
+        snapshot_finished_at,
+        online_listing_count,
+        valid_listing_count,
+        gone_listing_count,
+        is_csv_upload,
+        -- A CSV upload only holds the listings in that file, never the whole
+        -- market: it is never full and is left out of the market size.
+        not is_csv_upload
+        and online_listing_count >= {{ var('full_snapshot_min_ratio') }}
+            * max(case when not is_csv_upload then online_listing_count end) over ()
             as is_full_snapshot
     from stats
 ),

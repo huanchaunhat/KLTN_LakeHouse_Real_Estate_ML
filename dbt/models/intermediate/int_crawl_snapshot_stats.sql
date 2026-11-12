@@ -20,6 +20,7 @@ with observations as (
         crawl_timestamp,
         _ingested_at,
         coalesce(http_status in (404, 410), false) as is_gone,
+        ingest_source,
         is_valid_observation
     from {{ ref('stg_nhatot_properties') }}
     {% if is_incremental() %}
@@ -34,6 +35,7 @@ select
     count(distinct case when not is_gone then listing_key end) as online_listing_count,
     count(distinct case when is_valid_observation then listing_key end) as valid_listing_count,
     count(distinct case when is_gone then listing_key end) as gone_listing_count,
+    bool_or(ingest_source = 'csv') as is_csv_upload,
     max(_ingested_at) as last_ingested_at
 from observations
 group by snapshot_id
