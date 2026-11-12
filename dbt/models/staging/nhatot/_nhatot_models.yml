@@ -30,6 +30,15 @@ models:
         tests:
           - not_null
 
+      - name: ingest_source
+        description: How the observation entered the lakehouse, crawl or csv (scripts/ingest_csv.py).
+        tests:
+          - not_null
+          - accepted_values:
+              values:
+                - crawl
+                - csv
+
       - name: transaction_type
         tests:
           - accepted_values:

@@ -14,7 +14,10 @@
 -- After the last run in which the listing was online, it is removed at the
 -- earliest of:
 --   GONE_STATUS                the source answered 404/410 for it, or
---   ABSENT_FROM_FULL_SNAPSHOT  the next full run did not reach it.
+--   ABSENT_FROM_FULL_SNAPSHOT  the next full run did not reach it. Not
+--                              applied when that last observation came from
+--                              a CSV upload: the file is not the market, so
+--                              absence from a later crawl proves nothing.
 -- Gold is rebuilt on every run, so a listing that comes back online is no
 -- longer removed.
 
@@ -28,6 +31,7 @@ observations as (
         o.listing_key,
         o.snapshot_id,
         s.snapshot_started_at,
+        o.ingest_source,
         coalesce(o.http_status in (404, 410), false) as is_gone
     from {{ ref('stg_nhatot_properties') }} o
     inner join snapshots s
@@ -38,7 +42,8 @@ last_online as (
     select
         listing_key,
         max_by(snapshot_id, snapshot_started_at) as last_online_snapshot_id,
-        max(snapshot_started_at) as last_online_at
+        max(snapshot_started_at) as last_online_at,
+        max_by(ingest_source, snapshot_started_at) as last_online_source
     from observations
     where not is_gone
     group by listing_key
@@ -54,6 +59,7 @@ candidates as (
     inner join snapshots s
         on l.last_online_snapshot_id = s.snapshot_id
     where s.next_full_snapshot_id is not null
+      and l.last_online_source <> 'csv'
 
     union all
 

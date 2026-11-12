@@ -4,6 +4,7 @@ from datetime import timedelta
 import pendulum
 import requests
 from airflow.datasets import Dataset
+from airflow.models.param import Param
 from airflow.decorators import dag
 from airflow.operators.bash import BashOperator
 from airflow.operators.python import PythonOperator, ShortCircuitOperator
@@ -129,6 +130,75 @@ def reload_price_api(**_):
     print(response.json())
 
 
+DBT_ARGS = f"--project-dir {DBT_PROJECT_DIR} --profiles-dir {DBT_PROJECT_DIR}"
+# gold+ also excludes singular tests that read Gold: `stg+` selects them directly,
+# so --indirect-selection cannot skip them, and Gold is stale at this point.
+SILVER_SELECT = "--select stg_nhatot_properties+ --exclude path:models/gold+"
+GOLD_SELECT = "--select path:models/gold"
+
+
+def load_bronze_task(run_id, crawl_date):
+    return SparkSubmitOperator(
+        task_id="load_bronze",
+        application="/usr/local/airflow/scripts/load_bronze.py",
+        conn_id="spark_default",
+        conf=BRONZE_CONF,
+        driver_memory="1024m",
+        executor_memory="1024m",
+        executor_cores=1,
+        total_executor_cores=1,
+        application_args=["--run-id", run_id, "--crawl-date", crawl_date],
+    )
+
+
+def silver_gold_tasks():
+    """Bronze -> Silver (+ tests) -> Gold (+ tests). Returns (first, last) task."""
+    # Silver: staging + intermediate + silver models (schema `silver`).
+    dbt_run_silver = BashOperator(
+        task_id="dbt_run_silver",
+        bash_command=f"""
+set -e
+cd {DBT_PROJECT_DIR}
+dbt deps {DBT_ARGS}
+dbt run {SILVER_SELECT} {DBT_ARGS}
+""",
+    )
+
+    # Tests that reference Gold models run in dbt_test_gold.
+    dbt_test_silver = BashOperator(
+        task_id="dbt_test_silver",
+        bash_command=f"""
+set -e
+cd {DBT_PROJECT_DIR}
+dbt test {SILVER_SELECT} --indirect-selection cautious {DBT_ARGS}
+""",
+    )
+
+    # Gold: star schema (dims + facts), BI marts and ML features (schema `gold`).
+    # Only built after Silver passed its quality gate.
+    dbt_run_gold = BashOperator(
+        task_id="dbt_run_gold",
+        bash_command=f"""
+set -e
+cd {DBT_PROJECT_DIR}
+dbt run {GOLD_SELECT} {DBT_ARGS}
+""",
+    )
+
+    dbt_test_gold = BashOperator(
+        task_id="dbt_test_gold",
+        bash_command=f"""
+set -e
+cd {DBT_PROJECT_DIR}
+dbt test {GOLD_SELECT} {DBT_ARGS}
+""",
+        outlets=[ML_FEATURES_DATASET, RECOMMENDATION_DATASET],
+    )
+
+    dbt_run_silver >> dbt_test_silver >> dbt_run_gold >> dbt_test_gold
+    return dbt_run_silver, dbt_test_gold
+
+
 @dag(
     dag_id="end_to_end_lakehouse_pipeline",
     description="Nha Tot: crawl IDs -> crawl profiles -> Bronze -> Silver",
@@ -192,68 +262,12 @@ def reip_pipeline():
         ],
     )
 
-    load_bronze = SparkSubmitOperator(
-        task_id="load_bronze",
-        application="/usr/local/airflow/scripts/load_bronze.py",
-        conn_id="spark_default",
-        conf=BRONZE_CONF,
-        driver_memory="1024m",
-        executor_memory="1024m",
-        executor_cores=1,
-        total_executor_cores=1,
-        application_args=[
-            "--run-id", "{{ vn_run_id(dag_run.logical_date) }}",
-            "--crawl-date", "{{ vn_crawl_date(dag_run.data_interval_end) }}",
-        ],
+    load_bronze = load_bronze_task(
+        "{{ vn_run_id(dag_run.logical_date) }}",
+        "{{ vn_crawl_date(dag_run.data_interval_end) }}",
     )
 
-    DBT_ARGS = f"--project-dir {DBT_PROJECT_DIR} --profiles-dir {DBT_PROJECT_DIR}"
-    # gold+ also excludes singular tests that read Gold: `stg+` selects them directly,
-    # so --indirect-selection cannot skip them, and Gold is stale at this point.
-    SILVER_SELECT = "--select stg_nhatot_properties+ --exclude path:models/gold+"
-    GOLD_SELECT = "--select path:models/gold"
-
-    # Silver: staging + intermediate + silver models (schema `silver`).
-    dbt_run_silver = BashOperator(
-        task_id="dbt_run_silver",
-        bash_command=f"""
-set -e
-cd {DBT_PROJECT_DIR}
-dbt deps {DBT_ARGS}
-dbt run {SILVER_SELECT} {DBT_ARGS}
-""",
-    )
-
-    # Tests that reference Gold models run in dbt_test_gold.
-    dbt_test_silver = BashOperator(
-        task_id="dbt_test_silver",
-        bash_command=f"""
-set -e
-cd {DBT_PROJECT_DIR}
-dbt test {SILVER_SELECT} --indirect-selection cautious {DBT_ARGS}
-""",
-    )
-
-    # Gold: star schema (dims + facts), BI marts and ML features (schema `gold`).
-    # Only built after Silver passed its quality gate.
-    dbt_run_gold = BashOperator(
-        task_id="dbt_run_gold",
-        bash_command=f"""
-set -e
-cd {DBT_PROJECT_DIR}
-dbt run {GOLD_SELECT} {DBT_ARGS}
-""",
-    )
-
-    dbt_test_gold = BashOperator(
-        task_id="dbt_test_gold",
-        bash_command=f"""
-set -e
-cd {DBT_PROJECT_DIR}
-dbt test {GOLD_SELECT} {DBT_ARGS}
-""",
-        outlets=[ML_FEATURES_DATASET, RECOMMENDATION_DATASET],
-    )
+    dbt_first, dbt_last = silver_gold_tasks()
 
     maintenance_day = ShortCircuitOperator(
         task_id="is_maintenance_day",
@@ -270,20 +284,64 @@ dbt run-operation delta_maintenance {DBT_ARGS}
 """,
     )
 
-    (
-        crawl_nhatot_ids
-        >> crawl_nhatot_profiles
-        >> load_bronze
-        >> dbt_run_silver
-        >> dbt_test_silver
-        >> dbt_run_gold
-        >> dbt_test_gold
-        >> maintenance_day
-        >> delta_maintenance
-    )
+    crawl_nhatot_ids >> crawl_nhatot_profiles >> load_bronze >> dbt_first
+    dbt_last >> maintenance_day >> delta_maintenance
 
 
 reip_pipeline()
+
+
+# CSV files are uploaded by hand to this MinIO folder (console: http://localhost:9001).
+CSV_INBOX = "s3a://lakehouse/uploads"
+
+
+@dag(
+    dag_id="ingest_csv_pipeline",
+    description="CSV file (MinIO lakehouse/uploads) -> Landing -> Bronze -> Silver -> Gold",
+    schedule=None,  # Trigger DAG w/ config: {"csv_file": "<file name>.csv"}
+    start_date=pendulum.datetime(2026, 11, 1, tz=VN_TZ),
+    catchup=False,
+    max_active_runs=1,
+    params={"csv_file": Param("mau_tin_dang.csv", type="string", description="File name in MinIO lakehouse/uploads/")},
+    default_args={
+        "owner": "airflow",
+        "retries": 1,
+        "retry_delay": timedelta(minutes=5),
+    },
+    user_defined_macros={
+        "vn_crawl_date": vn_crawl_date,
+        "vn_run_id": vn_run_id,
+    },
+    tags=["reip", "csv", "lakehouse"],
+)
+def ingest_csv_pipeline():
+    # The csv_ prefix only makes the run easy to spot; dbt tells CSV rows apart
+    # by their ingest_source column.
+    run_id = "csv_{{ vn_run_id(dag_run.logical_date) }}"
+    crawl_date = "{{ vn_crawl_date(dag_run.logical_date) }}"
+
+    ingest_csv = SparkSubmitOperator(
+        task_id="ingest_csv",
+        application="/usr/local/airflow/scripts/ingest_csv.py",
+        conn_id="spark_default",
+        conf=BRONZE_CONF,
+        driver_memory="1024m",
+        executor_memory="1024m",
+        executor_cores=1,
+        total_executor_cores=1,
+        application_args=[
+            "--input", CSV_INBOX + "/{{ params.csv_file }}",
+            "--run-id", run_id,
+            "--crawl-date", crawl_date,
+        ],
+    )
+
+    dbt_first, _ = silver_gold_tasks()
+
+    ingest_csv >> load_bronze_task(run_id, crawl_date) >> dbt_first
+
+
+ingest_csv_pipeline()
 
 
 TRAIN_CONF = {

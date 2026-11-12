@@ -1,6 +1,6 @@
 # Airflow: các DAG và nhiệm vụ của từng task
 
-Tài liệu này mô tả 3 DAG của dự án: mỗi task làm gì, đọc và ghi vào đâu, chạy ở container nào, khi lỗi thì xử lý ra sao. Nội dung lấy từ code ngày 05/11/2026. Kiến trúc dữ liệu chi tiết từng tầng xem [ARCHITECTURE.md](ARCHITECTURE.md), còn phần MLflow và API xem [MLFLOW_VA_FASTAPI.md](MLFLOW_VA_FASTAPI.md).
+Tài liệu này mô tả 4 DAG của dự án: mỗi task làm gì, đọc và ghi vào đâu, chạy ở container nào, khi lỗi thì xử lý ra sao. Nội dung lấy từ code ngày 05/11/2026. Kiến trúc dữ liệu chi tiết từng tầng xem [ARCHITECTURE.md](ARCHITECTURE.md), còn phần MLflow và API xem [MLFLOW_VA_FASTAPI.md](MLFLOW_VA_FASTAPI.md).
 
 Airflow UI: http://localhost:8088 (tài khoản `admin` / `admin`).
 
@@ -9,6 +9,7 @@ Airflow UI: http://localhost:8088 (tài khoản `admin` / `admin`).
 | DAG | File (trong `airflow/dags/`) | Lịch chạy | Việc chính |
 |---|---|---|---|
 | `end_to_end_lakehouse_pipeline` | `end_to_end_pipeline.py` | Hằng ngày (`@daily`, giờ Việt Nam) | Crawl Nhà Tốt → Bronze → Silver → Gold, kiểm tra chất lượng, bảo trì Delta |
+| `ingest_csv_pipeline` | `end_to_end_pipeline.py` | Chạy tay | Nạp một file CSV → Bronze → Silver → Gold (thay cho bước crawl) |
 | `train_price_model` | `end_to_end_pipeline.py` | Khi Gold đạt test, nhưng chỉ train vào **thứ Hai** | Train model giá, quality gate, nạp lại API giá |
 | `train_recommendation_model` | `train_recommendation_model.py` | Mỗi lần Gold đạt test | Train model gợi ý, kiểm tra kỹ thuật, nạp lại API gợi ý |
 
@@ -204,6 +205,25 @@ Task gửi `POST /jobs` tới `recommendation-worker:8010` kèm token admin (Air
 
 Mỗi bước lưu kết quả vào thư mục job, nên khi retry cùng một DAG run thì bước nào xong rồi sẽ được bỏ qua. Model gợi ý được lên champion chỉ nhờ các kiểm tra kỹ thuật, chưa có đánh giá bằng nhãn người thật (xem [RECOMMENDATION_DEPLOYMENT.md](RECOMMENDATION_DEPLOYMENT.md)).
 
+## 5b. DAG `ingest_csv_pipeline` (nạp file CSV)
+
+Dùng khi có dữ liệu tin đăng dạng file CSV thay vì crawl. DAG chỉ thay hai bước crawl bằng bước `ingest_csv`; từ `load_bronze` trở đi chạy y hệt DAG hằng ngày, nên dữ liệu CSV đi qua cùng các luật làm sạch, kiểm tra chất lượng và cách ly (`silver.listing_quarantine`).
+
+```mermaid
+flowchart LR
+    I[ingest_csv] --> L[load_bronze] --> S[dbt_run_silver] --> ST[dbt_test_silver] --> G[dbt_run_gold] --> GT[dbt_test_gold]
+```
+
+**`ingest_csv`** (`scripts/ingest_csv.py`): đọc file từ MinIO `lakehouse/uploads/`, đổi mỗi dòng thành bản ghi JSON cùng định dạng crawler ghi ra, rồi ghi vào Landing `landing/source=nhatot/crawl_date=…/run_id=csv_…`.
+
+- **Cột bắt buộc:** `transaction_type` (sale/rent hoặc bán/thuê), `price` (4100000000, `4.1 tỷ`, `15 triệu`), `area_m2`, `property_type`, `district`, `province`. Các cột khác xem file mẫu `data/mau_tin_dang.csv` và đầu file script.
+- **Mã khu vực:** `province_id`, `district_id`, `ward_id` được tra theo tên trong `silver.listing_current` (chấp nhận "TP.HCM", "Quận 7", "Thủ Đức"...). Dòng không tra được quận vẫn vào Silver nhưng không dùng để train model giá.
+- **Mã tin:** có cột `listing_id` (mã Nhà Tốt) thì dòng đó cập nhật tin đã có; không có thì sinh mã `csv_<hash>` từ nội dung dòng, nên nạp lại cùng một file không tạo bản trùng.
+- **Cột `ingest_source`** (`crawl` / `csv`) đi từ Landing qua Bronze tới `silver.listing_current`, cho biết tin vào hệ thống bằng đường nào.
+- **Tin từ CSV không bị đánh dấu đã gỡ:** lần nạp CSV không bao giờ được tính là snapshot đầy đủ, nên tin crawl không có trong file vẫn giữ nguyên. Ngược lại, tin có lần xuất hiện gần nhất đến từ CSV cũng không bị suy ra là đã gỡ khi lần crawl sau không thấy nó (`int_listing_removals`). Chỉ khi tin đó xuất hiện lại trong một lần crawl thì nó mới theo luật gỡ tin bình thường.
+
+Không nên chạy DAG này cùng lúc với DAG hằng ngày (cùng ghi Bronze/Silver).
+
 ## 6. Tài nguyên và thứ tự chạy
 
 | Task | Chạy ở đâu | RAM tối đa của container |
@@ -221,6 +241,10 @@ Hai DAG train cùng được kích hoạt khi Gold đạt test. Cả hai task tr
 ```bash
 # Toàn bộ pipeline dữ liệu
 docker compose -p kltn exec airflow-scheduler airflow dags trigger end_to_end_lakehouse_pipeline
+
+# Nạp file CSV: upload file vào MinIO lakehouse/uploads/ (http://localhost:9001) rồi
+docker compose -p kltn exec airflow-scheduler airflow dags trigger ingest_csv_pipeline \
+  --conf '{"csv_file": "ten_file.csv"}'
 
 # Train model giá ngay (bỏ qua điều kiện thứ Hai)
 docker compose -p kltn exec airflow-scheduler airflow dags trigger train_price_model

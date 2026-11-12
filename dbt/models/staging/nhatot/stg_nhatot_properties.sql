@@ -31,6 +31,9 @@ typed as (
         sha2(concat_ws('||', source, cast(source_listing_id as string), snapshot_id), 256) as observation_id,
 
         source,
+        -- 'crawl' (Nhà Tốt crawler) or 'csv' (scripts/ingest_csv.py). Bronze
+        -- rows loaded before the column existed are crawls.
+        coalesce(ingest_source, 'crawl') as ingest_source,
         cast(source_listing_id as string) as source_listing_id,
         snapshot_id,
         crawl_date,
