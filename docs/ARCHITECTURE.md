@@ -4,7 +4,7 @@ Tài liệu mô tả kiến trúc hiện tại của dự án (nhánh `develop`,
 
 Chi tiết thiết kế star schema của Gold nằm ở [dbt/STAR_SCHEMA_DESIGN.md](../dbt/STAR_SCHEMA_DESIGN.md). Tài liệu này không lặp lại phần đó mà tập trung vào toàn bộ luồng và đánh giá.
 
-> Ghi chú: [README.md](../README.md) và [SUPERSET_CORRECT_SCHEMAS.md](../SUPERSET_CORRECT_SCHEMAS.md) đang mô tả phiên bản cũ (`stg_properties`, `fct_properties`, `fct_daily_summary`, `bronze/json/*.jsonl`). Những bảng đó không còn tồn tại. Khi hai tài liệu mâu thuẫn, tin tài liệu này và code.
+> Ghi chú: [README.md](../README.md) đang mô tả phiên bản cũ (`stg_properties`, `fct_properties`, `fct_daily_summary`, `bronze/json/*.jsonl`). Những bảng đó không còn tồn tại. Khi hai tài liệu mâu thuẫn, tin tài liệu này và code. Dashboard Superset xem [superset/README.md](../superset/README.md).
 
 ---
 
@@ -135,7 +135,6 @@ Script: [scripts/crawl_nhatot_profiles.py](../scripts/crawl_nhatot_profiles.py)
 - Không có thống kê lỗi cho cả lần chạy (tỷ lệ 429/5xx). Phải đọc log từng partition mới biết. Nên ghi một file `audit/` giống bước crawl ID, và fail task khi tỷ lệ lỗi vượt ngưỡng.
 - Danh sách ID lịch sử được đọc từ toàn bộ Bronze mỗi ngày. Chi phí sẽ tăng dần theo lịch sử. Có thể giới hạn bằng `--historical-lookback-days` (hiện đặt 0 = không giới hạn) hoặc dùng `silver.listing_current`.
 - Một tin còn trả 200 nhưng đã ẩn hoặc hết hạn (`payload.ad.status`/`state`) vẫn được crawl mãi. Hai trường này hiện chỉ dùng trong `content_hash`, chưa dùng để xác định trạng thái.
-- [scripts/crawl_nhatot.py](../scripts/crawl_nhatot.py) là crawler gộp đời cũ (giới hạn 35k bán / 15k thuê, bỏ request lỗi). DAG không còn dùng nó. Nên xoá hoặc chuyển vào thư mục `legacy/` để tránh nhầm.
 
 ### 4.3 Landing
 
@@ -205,7 +204,7 @@ bronze.raw_properties
 
 **Ổn**
 - Quarantine thay vì xoá, kèm test đối soát `staging = history + quarantine` và test history ∩ quarantine = ∅.
-- Mỗi lỗi chất lượng có mã riêng, gom thành mảng. Dễ thống kê lỗi trên dashboard ([superset/ml_data_quality_queries.sql](../superset/ml_data_quality_queries.sql)).
+- Mỗi lỗi chất lượng có mã riêng, gom thành mảng. Dễ thống kê lỗi trên dashboard (phần "Dữ liệu sạch đến đâu" của dashboard tổng quan, [superset/build_dashboards.py](../superset/build_dashboards.py)).
 - Ngưỡng outlier tính theo phân khúc và trên trạng thái mới nhất, nên tin bị crawl nhiều lần không bị tính trọng số cao hơn.
 - Số điện thoại không lưu dạng thô.
 - Các ngưỡng nằm trong `vars` của [dbt_project.yml](../dbt/dbt_project.yml), không hard-code.
@@ -297,7 +296,7 @@ Ngoài ra chưa có test về **khối lượng dữ liệu**, ví dụ số tin
 - Image chưa ghim phiên bản: `minio/minio:latest` (MLflow đã ghim `v3.16.1`). Build lại vào thời điểm khác có thể ra kết quả khác.
 - Chưa có cảnh báo khi DAG fail hay SLA. `retries=1` cho cả các task crawl dài.
 - Phải tạo connection `spark_default` bằng tay (README). Có thể khai báo qua biến môi trường `AIRFLOW_CONN_SPARK_DEFAULT`.
-- Rác trong repo: [airflow/jars/](../airflow/jars/) có jar không dùng (`hadoop-aws-3.3.4`, `aws-java-sdk-1.12.367`, `s3-2.18.41`, `mysql-connector-java-8.0.19`). [env.sh](../env.sh) trỏ tới `real_estate_data/` đang rỗng. Service `kafka` không ai dùng, chỉ tốn RAM trên máy 8 GB.
+- Service `kafka` không ai dùng, chỉ tốn RAM trên máy 8 GB.
 
 ---
 
@@ -316,7 +315,7 @@ Ngoài ra chưa có test về **khối lượng dữ liệu**, ví dụ số tin
 | Quality gate | ⚠️ Một nửa | Test chạy sau khi đã ghi đè bảng |
 | Quyền riêng tư | ⚠️ Cần sửa | Hash số điện thoại không salt |
 | ML (train, registry, serving) | ✅ Đã có | Model giá có quality gate; model gợi ý mới qua kiểm tra kỹ thuật, chưa đánh giá bằng nhãn người |
-| Tài liệu | ⚠️ | README và SUPERSET_CORRECT_SCHEMAS đã lỗi thời |
+| Tài liệu | ⚠️ | README đã lỗi thời |
 | Bảo mật hạ tầng | ⚠️ Dev-only | Secret trong file config, mount docker.sock |
 
 ---
@@ -336,7 +335,7 @@ Ngoài ra chưa có test về **khối lượng dữ liệu**, ví dụ số tin
 9. Bỏ gọi API trùng ở bước crawl ID.
 
 **P3 — dọn dẹp**
-10. Cập nhật README. Xoá `crawl_nhatot.py`, các jar thừa, service `kafka`, thư mục `app/` nếu không dùng.
+10. Cập nhật README. ~~Xoá `crawl_nhatot.py`, các jar thừa, thư mục `app/`.~~ ✅ Còn service `kafka`.
 11. Đưa secret ra `.env`, bỏ mount docker.sock, ghim phiên bản image.
 12. Export dashboard Superset (`superset export-dashboards`) vào git.
 13. Kiểm tra lại địa giới hành chính mới của TP.HCM trên Nhà Tốt.

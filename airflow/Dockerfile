@@ -55,7 +55,7 @@ RUN pip uninstall -y wheel && pip check
 # XGBoost cho price_model. Layer riêng để không phải cài lại toàn bộ Airflow;
 # phiên bản phải khớp api/requirements.txt vì API unpickle pipeline đã train.
 # xgboost-cpu: bản không kèm NCCL/CUDA (~200 MB).
-RUN pip install --no-cache-dir xgboost-cpu==2.1.4 \
+RUN pip install --no-cache-dir xgboost-cpu==2.1.4 optuna==5.0.0 \
         numpy==1.26.4 pandas==2.1.4 scikit-learn==1.6.1 \
     && pip check
 

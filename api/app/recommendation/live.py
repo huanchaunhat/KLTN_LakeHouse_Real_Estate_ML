@@ -1,6 +1,6 @@
 """Fetch one Nhà Tốt listing that is not in the model data yet.
 
-Uses the same detail endpoint as scripts/crawl_nhatot.py and maps the payload
+Uses the same detail endpoint as the legacy Nhà Tốt crawler and maps the payload
 with the same rules as dbt staging (stg_nhatot_properties.sql), the property
 category (dim_property_type.sql) and the price period
 (ml_recommendation_features.sql), so a fetched listing has the same fields as
