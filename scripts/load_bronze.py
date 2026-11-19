@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import argparse
+from datetime import date, timedelta
 
 from delta.tables import DeltaTable
 from pyspark import SparkConf, StorageLevel
@@ -21,6 +22,7 @@ from pyspark.sql.functions import (
 SOURCE = "nhatot"
 DETAIL_URL = "https://gateway.chotot.com/v1/public/ad-listing/"
 LANDING_ROOT = "s3a://lakehouse/landing/source=nhatot"
+ID_LANDING_ROOT = "s3a://lakehouse/landing/source=nhatot_ids"
 BRONZE_LOCATION = "s3a://lakehouse/bronze/source=nhatot/raw_properties"
 BRONZE_TABLE = "bronze.raw_properties"
 
@@ -32,6 +34,11 @@ def parse_args():
     parser.add_argument(
         "--validate-only", action="store_true",
         help="Read, normalize and count without writing Bronze or Hive",
+    )
+    parser.add_argument(
+        "--landing-retention-days", type=int, default=7,
+        help="Delete Landing crawl_date folders older than this many days, "
+             "but only those already present in Bronze (0 = keep everything)",
     )
     return parser.parse_args()
 
@@ -237,6 +244,42 @@ def load_bronze(spark, args):
         print(f"table={BRONZE_TABLE}")
     finally:
         df.unpersist()
+
+    if args.landing_retention_days > 0:
+        cleanup_landing(spark, args.crawl_date, args.landing_retention_days)
+
+
+def cleanup_landing(spark, crawl_date, retention_days):
+    """Delete raw Landing folders that Bronze already holds.
+
+    Landing is only a staging area: Bronze keeps the full payload plus
+    metadata, so once a crawl_date is in Bronze its JSON is redundant.
+    Recent days are kept so a task can be re-run from Landing, and a
+    crawl_date missing from Bronze is never deleted.
+    """
+    cutoff = date.fromisoformat(crawl_date) - timedelta(days=retention_days)
+    in_bronze = {
+        row["crawl_date"].isoformat()
+        for row in spark.sql(f"SELECT DISTINCT crawl_date FROM {BRONZE_TABLE}").collect()
+    }
+
+    sc = spark.sparkContext
+    hadoop_path = sc._jvm.org.apache.hadoop.fs.Path
+    fs = hadoop_path(LANDING_ROOT).getFileSystem(sc._jsc.hadoopConfiguration())
+
+    print(f"[8/8] Cleaning Landing older than {cutoff} (keep {retention_days} days)", flush=True)
+    for root in (LANDING_ROOT, ID_LANDING_ROOT):
+        root_path = hadoop_path(root)
+        if not fs.exists(root_path):
+            continue
+        for status in fs.listStatus(root_path):
+            name = status.getPath().getName()
+            if not name.startswith("crawl_date="):
+                continue
+            day = name[len("crawl_date="):]
+            if day < cutoff.isoformat() and day in in_bronze:
+                fs.delete(status.getPath(), True)
+                print(f"deleted {root}/{name}", flush=True)
 
 
 if __name__ == "__main__":

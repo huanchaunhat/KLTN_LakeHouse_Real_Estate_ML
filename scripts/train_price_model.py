@@ -23,6 +23,7 @@ from datetime import datetime
 
 import mlflow
 import numpy as np
+import optuna
 import pandas as pd
 from mlflow.exceptions import MlflowException
 from mlflow.tracking import MlflowClient
@@ -45,6 +46,22 @@ EXPERIMENT = "price_prediction"
 MODEL_NAME = "price_model"
 CHAMPION_ALIAS = "champion"
 TARGET = "log_price_vnd"
+
+# XGBoost hyperparameters from the last full Optuna search (150 TPE trials,
+# notebooks/price_model_tuning.ipynb, 2026-11-18: valid MAPE 20.12% -> 19.54%,
+# test MAPE 19.57% -> 19.20%). Every run repeats the search (--tune-trials) with
+# this set as trial 0, so the chosen parameters are never worse than these.
+TUNED_PARAMS = {
+    "n_estimators": 1900,
+    "learning_rate": 0.0136,
+    "max_depth": 10,
+    "min_child_weight": 5,
+    "subsample": 0.6859,
+    "colsample_bytree": 0.8407,
+    "reg_lambda": 0.1282,
+    "reg_alpha": 0.0236,
+    "gamma": 0.0073,
+}
 
 # Feature groups. The API builds its input frame from this same spec
 # (logged as feature_spec.json), so the two cannot drift.
@@ -72,7 +89,7 @@ FEATURES = NUMERIC + BOOLEAN + CATEGORICAL
 MISSING = "__missing__"
 
 
-TOTAL_STEPS = 9
+TOTAL_STEPS = 10
 _STARTED_AT = time.time()
 # log_step() updates this so every following line says which step it belongs to.
 _CURRENT = {"step": 0, "name": "INIT"}
@@ -192,6 +209,12 @@ def parse_args():
         "--max-mape-regression", type=float, default=0.0,
         help="Promote if MAPE <= champion MAPE * (1 + this)",
     )
+    parser.add_argument(
+        "--tune-trials", type=int, default=30,
+        help="Optuna trials for the XGBoost hyperparameters, scored on the newest "
+             "--tune-valid-fraction of the training rows; 0 reuses TUNED_PARAMS",
+    )
+    parser.add_argument("--tune-valid-fraction", type=float, default=0.2)
     parser.add_argument(
         "--random-test-size", type=float, default=0.3,
         help="Also score every candidate on a random split of this size, "
@@ -318,14 +341,88 @@ def _tree_preprocessor():
     ).set_output(transform="pandas")
 
 
-def build_candidates():
+def suggest_params(trial):
+    """Search space around the values that work for tabular data of this size."""
+    return {
+        "n_estimators": trial.suggest_int("n_estimators", 400, 2000, step=100),
+        "learning_rate": trial.suggest_float("learning_rate", 0.01, 0.1, log=True),
+        "max_depth": trial.suggest_int("max_depth", 4, 10),
+        "min_child_weight": trial.suggest_int("min_child_weight", 1, 20),
+        "subsample": trial.suggest_float("subsample", 0.6, 1.0),
+        "colsample_bytree": trial.suggest_float("colsample_bytree", 0.4, 1.0),
+        "reg_lambda": trial.suggest_float("reg_lambda", 0.1, 10.0, log=True),
+        "reg_alpha": trial.suggest_float("reg_alpha", 1e-3, 5.0, log=True),
+        "gamma": trial.suggest_float("gamma", 1e-3, 1.0, log=True),
+    }
+
+
+def tune_hyperparameters(train, x_train, y_train, n_trials, valid_fraction):
+    """Optuna (TPE) search for the XGBoost hyperparameters; returns the best set.
+
+    The training rows are split once more by posted_date: the newest
+    valid_fraction is the validation set, so a trial is scored the way the
+    model is used (on listings newer than what it learned from) and the test
+    set stays untouched until the gate. Trial 0 is TUNED_PARAMS, so the search
+    can only improve on the current best.
+    """
+    cutoff = train["posted_date"].quantile(1 - valid_fraction).normalize()
+    is_valid = (train["posted_date"] > cutoff).to_numpy()
+    x_fit, y_fit = x_train[~is_valid], y_train[~is_valid]
+    x_valid, actual = x_train[is_valid], train.loc[is_valid, "price_vnd"].to_numpy()
+    log("validation = newest {:.0%} of train: {:,} fit rows (-> {}), {:,} valid rows "
+        "({} -> {})".format(valid_fraction, len(x_fit), cutoff.date(), len(x_valid),
+                            train.loc[is_valid, "posted_date"].min().date(),
+                            train.loc[is_valid, "posted_date"].max().date()))
+    log("sampler = TPE (Tree-structured Parzen Estimator), objective = MAPE on valid")
+
+    def objective(trial):
+        params = suggest_params(trial)
+        started = time.time()
+        model = build_candidates(params, quiet=True)["xgboost"].fit(x_fit, y_fit)
+        valid_mape = metrics(actual, np.exp(model.predict(x_valid)), "valid")["valid_mape"]
+        log("trial {:>3}: valid MAPE {:.4f} ({:.0f}s) trees={} depth={} lr={:.4f}".format(
+            trial.number, valid_mape, time.time() - started, params["n_estimators"],
+            params["max_depth"], params["learning_rate"]))
+        return valid_mape
+
+    optuna.logging.set_verbosity(optuna.logging.WARNING)
+    study = optuna.create_study(direction="minimize",
+                                sampler=optuna.samplers.TPESampler(seed=42))
+    study.enqueue_trial(TUNED_PARAMS)
+    study.optimize(objective, n_trials=n_trials)
+
+    trials = (study.trials_dataframe(attrs=("number", "value", "params"))
+              .rename(columns={"value": "valid_mape"})
+              .rename(columns=lambda c: c.replace("params_", ""))
+              .sort_values("valid_mape"))
+    log_block("top 5 of {} trials by validation MAPE".format(n_trials),
+              trials.head(5).round(4).to_string(index=False))
+    log_block("hyperparameter importance (share of the MAPE variation explained)",
+              pd.Series(optuna.importance.get_param_importances(study)).round(3).to_string())
+    log_block("BEST HYPERPARAMETERS (trial {}, valid MAPE {:.4f}; trial 0 = TUNED_PARAMS "
+              "{:.4f})".format(study.best_trial.number, study.best_value,
+                               study.trials[0].value),
+              json.dumps(study.best_params, indent=2))
+    return study.best_params
+
+
+def build_candidates(params=None, quiet=False):
     """The model trained on every run. The comparison of algorithms (Ridge,
     RandomForest, HistGBM, XGBoost, CatBoost) lives in
     notebooks/price_model_comparison.ipynb; XGBoost won it (19.84% MAPE), so
     production trains only that one. notebooks/price_model_improvements.ipynb
     added the price/m2 target and the area features (20.21% -> 19.73% MAPE).
+    `params` are the XGBoost hyperparameters, normally the result of
+    tune_hyperparameters(); quiet=True skips the explanatory log lines
+    (used inside the search loop).
     Kept as a dict so the evaluation and model_comparison.csv need no change
     if a candidate is added back."""
+    params = TUNED_PARAMS if params is None else params
+    if quiet:
+        return {"xgboost": PricePerM2Regressor(Pipeline([
+            ("prep", _tree_preprocessor()),
+            ("model", XGBRegressor(**params, tree_method="hist", n_jobs=2, random_state=42)),
+        ]))}
     log("model 'xgboost': ordinal + target encoding + area price/m2 features "
         "-> XGBRegressor (boosting with regularised leaves and row/column sampling)")
     log("the trees learn log(price / area_m2); predict() adds log(area_m2) back, "
@@ -338,13 +435,7 @@ def build_candidates():
         "xgboost": PricePerM2Regressor(Pipeline([
             ("prep", _tree_preprocessor()),
             ("model", XGBRegressor(
-                n_estimators=800,
-                learning_rate=0.05,
-                max_depth=7,
-                min_child_weight=5,
-                subsample=0.8,
-                colsample_bytree=0.7,
-                reg_lambda=1.0,
+                **params,
                 tree_method="hist",
                 n_jobs=2,
                 random_state=42,
@@ -652,8 +743,17 @@ def main():
             "test_posted_to": str(test["posted_date"].max().date()),
         })
 
-        log_step(5, "TRAIN", "fit every candidate on the same {:,} rows".format(len(x_train)))
-        candidates = build_candidates()
+        log_step(5, "TUNE", "search the XGBoost hyperparameters with Optuna")
+        if args.tune_trials > 0:
+            params = tune_hyperparameters(
+                train, x_train, y_train, args.tune_trials, args.tune_valid_fraction)
+        else:
+            params = TUNED_PARAMS
+            log("--tune-trials 0: reusing TUNED_PARAMS from the last full search")
+        mlflow.log_param("tune_trials", args.tune_trials)
+
+        log_step(6, "TRAIN", "fit every candidate on the same {:,} rows".format(len(x_train)))
+        candidates = build_candidates(params)
         fit_seconds = {}
         for name, candidate in candidates.items():
             log("-" * 60)
@@ -664,7 +764,7 @@ def main():
             fit_seconds[name] = time.time() - fit_started
             log("'{}' fitted in {:.1f}s".format(name, fit_seconds[name]))
 
-        log_step(6, "EVALUATE", "compare the model, the baseline and the champion")
+        log_step(7, "EVALUATE", "compare the model, the baseline and the champion")
         # Every candidate sees the same out-of-time holdout; the lowest MAPE
         # becomes the run's model (trivially, while there is only one).
         comparison = []
@@ -731,7 +831,7 @@ def main():
         segments = segment_report(test, test_pred)
         log_block("holdout error per property_type", segments.to_string(index=False))
 
-        log_step(7, "ARTIFACTS", "log the serving contract and reports to MLflow")
+        log_step(8, "ARTIFACTS", "log the serving contract and reports to MLflow")
         with tempfile.TemporaryDirectory() as tmp:
             spec = {
                 "numeric": NUMERIC, "boolean": BOOLEAN, "categorical": CATEGORICAL,
@@ -767,7 +867,7 @@ def main():
             mlflow.log_artifacts(tmp)
         log("artifacts uploaded to the MinIO bucket behind MLflow")
 
-        log_step(8, "REGISTER", "save the model and run the quality gate")
+        log_step(9, "REGISTER", "save the model and run the quality gate")
         mlflow.sklearn.log_model(
             pipeline, artifact_path="model",
             registered_model_name=MODEL_NAME,
@@ -813,7 +913,7 @@ def main():
                                      "{:.4f}".format(results["test_mape"]))
         mlflow.set_tags({"gate": reason, "model_version": new_version})
 
-        log_step(9, "PREDICTIONS", "score every listing into {}".format(PREDICTION_TABLE))
+        log_step(10, "PREDICTIONS", "score every listing into {}".format(PREDICTION_TABLE))
         split = pd.Series(np.where(is_test, "test", "train"), index=df.index)
         log("re-running the same preprocessing over every row, train included, "
             "so the table shows how the model fits what it has already seen")
@@ -824,7 +924,7 @@ def main():
                 int((split == "test").sum())))
         write_predictions(spark, df, all_pred, split, run.info.run_id, new_version)
 
-    log_step(9, "DONE", "run finished")
+    log_step(10, "DONE", "run finished")
     summary = {
         "model_version": new_version,
         "algorithm": best,

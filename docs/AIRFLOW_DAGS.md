@@ -87,9 +87,12 @@ Mọi kết quả đều được ghi lại, kể cả lỗi 404, 429 hay timeou
 | Loại task | Spark job (`scripts/load_bronze.py`), 1 core |
 | Đọc | Landing của lần crawl này |
 | Ghi | Bảng Delta `bronze.raw_properties` (phân vùng theo `crawl_date`), đăng ký vào Hive Metastore |
+| Xóa | Landing (cả `source=nhatot` và `source=nhatot_ids`) của các `crawl_date` cũ hơn 7 ngày **và** đã có trong Bronze |
 | Thời gian | Khoảng 2 phút |
 
 Chỉ chuẩn hóa phần kỹ thuật: kiểu dữ liệu, `snapshot_id`, `url`, cột `_ingested_at`, bỏ dòng trùng. Payload JSON được giữ nguyên. Ghi bằng MERGE theo (`source`, `source_listing_id`, `snapshot_id`), nên nạp lại cùng một lần crawl không sinh dòng trùng.
+
+Landing chỉ là chỗ tạm: Bronze giữ nguyên payload nên JSON ở Landing là bản dư. Sau khi ghi Bronze xong, task xóa các thư mục Landing cũ hơn 7 ngày (`--landing-retention-days`, đặt 0 để tắt). Ngày nào chưa có trong Bronze thì không bao giờ bị xóa, và 7 ngày gần nhất được giữ để chạy lại task khi cần.
 
 ### 3.4 `dbt_run_silver`
 
@@ -176,8 +179,9 @@ Chỉ cho đi tiếp vào **thứ Hai**, hoặc khi DAG được bấm chạy ta
 
 Các bước:
 1. Tách tập test theo thời gian: sắp tin theo ngày đăng, lấy **20% tin mới nhất** làm tập test (cắt trọn ngày, không ngày nào nằm ở cả hai tập), phần còn lại để train.
-2. Train XGBoost, đo MAPE, so với baseline (giá trung vị theo m² của từng cặp quận × loại bất động sản) và **với champion hiện tại trên cùng tập test**.
-3. **Quality gate:** chỉ chuyển alias `champion` sang version mới khi model mới tốt hơn baseline và MAPE không cao hơn champion. Không đạt thì version vẫn được lưu trong MLflow nhưng API giữ model cũ.
+2. **Dò siêu tham số** bằng Optuna (thuật toán TPE): tách tiếp 20% tin mới nhất của tập train làm tập validation, thử 30 bộ siêu tham số XGBoost (`--tune-trials`, 0 để bỏ qua), mỗi bộ fit trên phần còn lại và chấm MAPE trên validation. Lần thử đầu luôn là bộ tốt nhất của lần dò đầy đủ trước (`TUNED_PARAMS`, 150 lần thử trong `notebooks/price_model_tuning.ipynb`), nên kết quả không bao giờ kém hơn. Bảng các lần thử và bộ tốt nhất được in trong log task.
+3. Train XGBoost với bộ siêu tham số tốt nhất, đo MAPE, so với baseline (giá trung vị theo m² của từng cặp quận × loại bất động sản) và **với champion hiện tại trên cùng tập test**.
+4. **Quality gate:** chỉ chuyển alias `champion` sang version mới khi model mới tốt hơn baseline và MAPE không cao hơn champion. Không đạt thì version vẫn được lưu trong MLflow nhưng API giữ model cũ.
 
 ### 4.3 `reload_price_api`
 
