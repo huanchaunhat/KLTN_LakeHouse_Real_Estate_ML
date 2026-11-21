@@ -72,7 +72,10 @@ ENTRYPOINT ["/entrypoint.sh"]
 CMD ["webserver"]
 
 USER root
-RUN apt-get update && apt-get install -y docker.io && \
-    usermod -aG docker airflow && \
-    apt-get clean && rm -rf /var/lib/apt/lists/*
+# Airflow dùng Docker qua socket của host, chỉ cần CLI. Copy binary từ image
+# chính thức để tránh tải docker.io/containerd qua Debian snapshot khi rebuild.
+COPY --from=docker:28.3.3-cli@sha256:0135662b510037ea581d99c2e5929c5e01185139c0b86986a418bd4da0b98a44 /usr/local/bin/docker /usr/local/bin/docker
+RUN groupadd --system --force docker \
+    && usermod -aG docker airflow \
+    && docker --version
 USER airflow

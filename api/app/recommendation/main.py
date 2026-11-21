@@ -18,7 +18,7 @@ import pandas as pd
 import requests
 from fastapi import FastAPI, Depends, HTTPException, Header, Query
 from fastapi.responses import FileResponse, Response, JSONResponse
-from pydantic import BaseModel, ConfigDict, Field, StrictInt
+from pydantic import BaseModel, ConfigDict, Field, StrictInt, ValidationError, field_validator
 from mlflow.tracking import MlflowClient
 
 from recommendation.contract import file_hash, normalize_text, utc
@@ -95,12 +95,18 @@ class Preferences(Common):
     price_period: Literal['total', 'month', 'day', 'year', 'unknown'] | None = None
     province_id: str | None = None
     district_id: str | None = None
-    max_price: float | None = Field(default=None, gt=0)
-    min_area: float | None = Field(default=None, gt=0)
+    max_price: float | None = Field(default=None, ge=0)
+    min_area: float | None = Field(default=None, ge=0)
     min_bedrooms: int | None = Field(default=None, ge=0, le=100)
     query: str | None = Field(default=None, max_length=1000)
-    target_price: float | None = Field(default=None, gt=0)
-    target_area: float | None = Field(default=None, gt=0)
+    target_price: float | None = Field(default=None, ge=0)
+    target_area: float | None = Field(default=None, ge=0)
+
+    @field_validator('max_price', 'min_area', 'min_bedrooms', 'target_price', 'target_area')
+    @classmethod
+    def optional_criterion(cls, value):
+        # Zero means no preference; the engine still receives positive targets only.
+        return None if value == 0 else value
 
 
 class Search(Base):
@@ -167,6 +173,24 @@ def create_app(manager=None, database=None):
     @app.exception_handler(ValueError)
     async def invalid(request, exc):
         return JSONResponse(status_code=422, content={'detail': str(exc)})
+
+    @app.exception_handler(ValidationError)
+    async def invalid_fields(request, exc):
+        labels = {'target_price': 'Giá mong muốn', 'max_price': 'Ngân sách tối đa',
+                  'target_area': 'Diện tích mong muốn', 'min_area': 'Diện tích tối thiểu',
+                  'min_bedrooms': 'Phòng ngủ tối thiểu', 'limit': 'Số kết quả'}
+        messages = []
+        for error in exc.errors(include_url=False, include_input=False):
+            field = str(error['loc'][-1]) if error['loc'] else 'Dữ liệu'
+            if field == 'limit':
+                message = 'Số kết quả phải là số nguyên từ 1 đến 50.'
+            elif field in labels:
+                rule = 'số nguyên từ 0 đến 100' if field == 'min_bedrooms' else 'số hữu hạn lớn hơn hoặc bằng 0'
+                message = f'{labels[field]} phải là {rule}.'
+            else:
+                message = f'{field}: {error["msg"]}'
+            messages.append(message)
+        return JSONResponse(status_code=422, content={'detail': ' '.join(messages)})
 
     @app.exception_handler(KeyError)
     async def missing(request, exc):

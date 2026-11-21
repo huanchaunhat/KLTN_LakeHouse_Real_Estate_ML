@@ -240,10 +240,11 @@ footer{max-width:1200px;margin:auto;padding:0 24px 34px;font-size:12.5px;color:v
         <div data-field="province"><label>Tỉnh/thành<i class="tag-auto" title="Tự điền từ tin gốc"></i><select id="province"><option value="">Tất cả</option></select></label></div>
         <div data-field="district"><label>Quận/huyện<i class="tag-auto" title="Tự điền từ tin gốc"></i><select id="district" disabled><option value="">Chọn tỉnh/thành trước</option></select></label></div>
         <div class="group-label">Giá và diện tích</div>
-        <div data-field="target_price"><label>Giá mong muốn (₫)<i class="tag-auto" title="Tự điền từ tin gốc"></i><input id="target_price" type="number" min="1" placeholder="15000000"></label></div>
-        <div data-field="price"><label>Ngân sách tối đa (₫)<input id="price" type="number" min="1" placeholder="Không giới hạn"></label></div>
-        <div data-field="target_area"><label>DT mong muốn (m²)<i class="tag-auto" title="Tự điền từ tin gốc"></i><input id="target_area" type="number" min="1" step="any" placeholder="50"></label></div>
-        <div data-field="area"><label>DT tối thiểu (m²)<input id="area" type="number" min="1" step="any" placeholder="Không giới hạn"></label></div>
+        <div class="wide"><small>Để trống hoặc nhập 0 ở giá, diện tích và phòng ngủ nếu không có yêu cầu.</small></div>
+        <div data-field="target_price"><label>Giá mong muốn (₫)<i class="tag-auto" title="Tự điền từ tin gốc"></i><input id="target_price" type="number" min="0" placeholder="15000000"></label></div>
+        <div data-field="price"><label>Ngân sách tối đa (₫)<input id="price" type="number" min="0" placeholder="Không giới hạn"></label></div>
+        <div data-field="target_area"><label>DT mong muốn (m²)<i class="tag-auto" title="Tự điền từ tin gốc"></i><input id="target_area" type="number" min="0" step="any" placeholder="50"></label></div>
+        <div data-field="area"><label>DT tối thiểu (m²)<input id="area" type="number" min="0" step="any" placeholder="Không giới hạn"></label></div>
         <div data-field="bedrooms"><label>Phòng ngủ tối thiểu<i class="tag-auto" title="Tự điền từ tin gốc"></i><input id="bedrooms" type="number" min="0" placeholder="Không giới hạn"></label></div>
         <div data-field="limit"><label>Số kết quả<input id="limit" type="number" min="1" max="50" value="20"></label></div>
         <div class="wide" data-field="query"><label>Từ khóa nhu cầu<i class="tag-auto" title="Tự điền từ tin gốc"></i><input id="query" maxlength="1000" placeholder="Ví dụ: ban công nội thất"></label></div>
@@ -562,7 +563,7 @@ function preferencesRequest() {
   const sale = $('market').value === 'sale';
   const r = {transaction_type:$('market').value, property_category:$('category').value, price_period:sale ? 'total' : $('period').value};
   for (const [id, key] of [['target_price','target_price'], ['price','max_price'], ['target_area','target_area'], ['area','min_area'], ['bedrooms','min_bedrooms']])
-    if ($(id).value !== '') r[key] = Number($(id).value);
+    if ($(id).value !== '' && Number($(id).value) !== 0) r[key] = Number($(id).value);
   if ($('province').value) r.province_id = $('province').value;
   if (!$('district').disabled && $('district').value) r.district_id = $('district').value;
   if ($('query').value.trim()) r.query = $('query').value.trim();
@@ -570,10 +571,13 @@ function preferencesRequest() {
 }
 
 async function runSearch() {
+  const limit = Number($('limit').value);
+  if (!Number.isInteger(limit) || limit < 1 || limit > 50)
+    throw Error('Số kết quả phải là số nguyên từ 1 đến 50.');
+  if (!$('criteria').reportValidity()) return;
   const edited = !seed || JSON.stringify(formValues()) !== JSON.stringify(seedForm);
   // A fetched listing is not in the model index, so it can only seed a criteria search.
   const method = edited || seed.live ? 'preferences' : 'similar';
-  const limit = Number($('limit').value);
   const request = method === 'similar' ? {listing_key:seed.listing_key, limit} : {...preferencesRequest(), limit};
   $('results-head').classList.add('hidden');
   $('results').innerHTML = '<div class="list"><div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div></div>';

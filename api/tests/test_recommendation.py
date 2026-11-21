@@ -80,6 +80,48 @@ class DeploymentTests(unittest.TestCase):
                      dict(method='similar', request={'listing_key':'rent:0','as_of':'invalid'})]:
             self.assertEqual(requests.post(self.url+'/recommend', json=body).status_code, 422)
 
+    def test_zero_preferences_match_unspecified_criteria(self):
+        request = dict(transaction_type='rent', property_category='HOUSE',
+                       price_period='month', as_of=NOW)
+        baseline = requests.post(self.url+'/recommend', json=dict(method='preferences', request=request))
+        self.assertEqual(baseline.status_code, 200, baseline.text)
+        fields = ('target_price', 'max_price', 'target_area', 'min_area', 'min_bedrooms')
+        for zero in (0, 0.0, '0'):
+            with self.subTest(zero=zero):
+                response = requests.post(self.url+'/recommend', json=dict(method='preferences',
+                    request={**request, **dict.fromkeys(fields, zero)}))
+                self.assertEqual(response.status_code, 200, response.text)
+                self.assertEqual(response.json(), baseline.json())
+
+        positive = dict(target_price=10e6, max_price=20e6, target_area=80,
+                        min_area=60, min_bedrooms=1)
+        response = requests.post(self.url+'/recommend', json=dict(method='preferences',
+            request={**request, **positive}))
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertTrue(response.json()['items'])
+        for field, value in positive.items():
+            self.assertEqual(response.json()['request'][field], value)
+
+    def test_invalid_preferences_have_readable_errors(self):
+        request = dict(transaction_type='rent', property_category='HOUSE',
+                       price_period='month', as_of=NOW)
+        for field in ('target_price', 'max_price', 'target_area', 'min_area', 'min_bedrooms'):
+            for value in (-1, float('inf')):
+                with self.subTest(field=field, value=value):
+                    response = requests.post(self.url+'/recommend',
+                        data=json.dumps(dict(method='preferences', request={**request, field:value})),
+                        headers={'Content-Type': 'application/json'})
+                    self.assertEqual(response.status_code, 422, response.text)
+                    detail = response.json()['detail']
+                    self.assertIn('phải là', detail)
+                    self.assertNotIn('validation errors', detail)
+                    self.assertNotIn('errors.pydantic.dev', detail)
+
+        response = requests.post(self.url+'/recommend', json=dict(method='preferences',
+            request={**request, 'limit':0}))
+        self.assertEqual(response.status_code, 422, response.text)
+        self.assertEqual(response.json()['detail'], 'Số kết quả phải là số nguyên từ 1 đến 50.')
+
     def test_listing_lookup_by_key_source_id_or_link(self):
         # rent:0 is the seventh fixture row, so its source id is 1006.
         for value in ['rent:0', ' 1006 ', 'https://gateway.chotot.com/v1/public/ad-listing/1006',

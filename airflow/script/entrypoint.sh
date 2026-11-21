@@ -52,8 +52,11 @@ wait_for_port() {
 : "${MYSQL_DB:="airflow"}"
 : "${MYSQL_EXTRAS:=""}"
 
-AIRFLOW__CORE__SQL_ALCHEMY_CONN="mysql+mysqldb://${MYSQL_USER}:${MYSQL_PASSWORD}@${MYSQL_HOST}:${MYSQL_PORT}/${MYSQL_DB}${MYSQL_EXTRAS}"
-export AIRFLOW__CORE__SQL_ALCHEMY_CONN
+# Use the Airflow 2.6 database key and preserve an explicitly supplied URI.
+# mysqlclient maps transient DNS failures to OperationalError, which the
+# Airflow heartbeat catches and retries instead of terminating its task.
+: "${AIRFLOW__DATABASE__SQL_ALCHEMY_CONN:=${AIRFLOW__CORE__SQL_ALCHEMY_CONN:-mysql+mysqldb://${MYSQL_USER}:${MYSQL_PASSWORD}@${MYSQL_HOST}:${MYSQL_PORT}/${MYSQL_DB}${MYSQL_EXTRAS}}}"
+export AIRFLOW__DATABASE__SQL_ALCHEMY_CONN
 
 # Wait for MySQL
 wait_for_port "MySQL" "$MYSQL_HOST" "$MYSQL_PORT"
