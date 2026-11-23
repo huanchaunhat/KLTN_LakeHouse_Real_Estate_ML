@@ -37,7 +37,7 @@ with source as (
 
 features as (
     select
-        listing_key, observation_id, source, source_listing_id, url,
+        listing_key, observation_id, source, source_listing_id, url, image_urls, image_count,
         transaction_type, property_category, trim(property_type) as property_type,
         property_subtype, title, description, project_name,
         cast(price_vnd as double) as price_vnd, price_period,

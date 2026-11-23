@@ -24,6 +24,7 @@ from mlflow.tracking import MlflowClient
 from recommendation.contract import file_hash, normalize_text, utc
 from recommendation.registry import MODEL_NAME
 from recommendation.evaluate import evaluate_engine
+from recommendation.media import image_urls, load_images
 from api.app.recommendation import live
 
 ROOT = Path(os.getenv('REIP_STATE', '/state'))
@@ -132,9 +133,16 @@ class Reload(Base):
     version: str = Field(pattern=r'^[1-9][0-9]*$')
 
 
-def create_app(manager=None, database=None):
+def create_app(manager=None, database=None, images_file=None):
     manager = manager or Manager()
     database = Path(database or ROOT/'labels.sqlite')
+    # Compatibility metadata for bundles trained before Gold carried image_urls.
+    # Loaded once; serving never queries Silver or downloads third-party images.
+    try:
+        listing_images = load_images(images_file or ROOT/'listing_images.parquet')
+    except Exception:
+        logging.getLogger(__name__).exception('Could not load listing images; using bundle photos')
+        listing_images = {}
 
     @contextmanager
     def db():
@@ -204,7 +212,8 @@ def create_app(manager=None, database=None):
     def details(engine, key):
         market, index = engine.lookup[key]
         row = engine.markets[market][0].iloc[index]
-        out = {}
+        photos = image_urls(row.get('image_urls')) or listing_images.get(key, [])
+        out = {'image_urls': photos, 'image_count': len(photos)}
         for field in ['listing_key', 'source_listing_id', 'title', 'description', 'price_vnd', 'price_period',
                       'area_m2', 'bedrooms', 'bathrooms', 'province', 'district', 'ward', 'province_id',
                       'district_id', 'transaction_type', 'property_category', 'property_subtype',

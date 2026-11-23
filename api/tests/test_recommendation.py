@@ -13,6 +13,8 @@ from unittest.mock import patch, MagicMock
 
 import mlflow.pyfunc
 import pandas as pd
+import pyarrow as pa
+import pyarrow.parquet as pq
 import requests
 import uvicorn
 
@@ -32,7 +34,14 @@ class DeploymentTests(unittest.TestCase):
         cls.temp = tempfile.TemporaryDirectory()
         cls.root = Path(cls.temp.name)
         source = cls.root/'data.parquet'
-        fixture().to_parquet(source, index=False)
+        data = fixture()
+        data['image_urls'] = [(['https://images.example.com/house-1.jpg',
+                               'https://images.example.com/house-2.jpg']
+                              if key == 'rent:1' else []) for key in data.listing_key]
+        data.to_parquet(source, index=False)
+        images_file = cls.root/'listing_images.parquet'
+        pq.write_table(pa.table({'listing_key': ['rent:0', 'rent:1'], 'image_urls': [
+            ['https://images.example.com/legacy.jpg'], ['https://images.example.com/older.jpg']]}), images_file)
         cls.bundle = cls.root/'bundle'
         with contextlib.redirect_stdout(io.StringIO()):
             train(source, cls.bundle, dataset_version='http-test', as_of=NOW, min_df=1)
@@ -43,7 +52,7 @@ class DeploymentTests(unittest.TestCase):
         with socket.socket() as sock:
             sock.bind(('127.0.0.1', 0))
             cls.port = sock.getsockname()[1]
-        cls.server = uvicorn.Server(uvicorn.Config(create_app(cls.manager, cls.root/'labels.sqlite'),
+        cls.server = uvicorn.Server(uvicorn.Config(create_app(cls.manager, cls.root/'labels.sqlite', images_file),
             host='127.0.0.1', port=cls.port, log_level='error'))
         cls.thread = threading.Thread(target=cls.server.run, daemon=True)
         cls.thread.start()
@@ -136,10 +145,29 @@ class DeploymentTests(unittest.TestCase):
             self.assertEqual(requests.get(self.url+'/listing', params={'id': value}).status_code, 404)
         self.assertEqual(requests.get(self.url+'/listing').status_code, 422)
 
+    def test_photos_survive_bundle_and_http_with_legacy_fallback(self):
+        for key, expected in [('rent:0', ['https://images.example.com/legacy.jpg']),
+                              ('rent:1', ['https://images.example.com/house-1.jpg',
+                                          'https://images.example.com/house-2.jpg']),
+                              ('sale:0', [])]:
+            response = requests.get(self.url+'/listing', params={'id': key})
+            self.assertEqual(response.status_code, 200, response.text)
+            self.assertEqual(response.json()['image_urls'], expected)
+            self.assertEqual(response.json()['image_count'], len(expected))
+        response = requests.post(self.url+'/recommend', json=dict(method='similar',
+            request=dict(listing_key='rent:0', as_of=NOW)))
+        self.assertEqual(response.status_code, 200, response.text)
+        items = response.json()['items']
+        self.assertEqual(items[0]['image_count'], 2)
+        # Display metadata cannot change ranks, scores or reasons.
+        expected = self.manager.state['engine'].similar('rent:0', as_of=NOW)
+        self.assertEqual([{key: item[key] for key in row} for item, row in zip(items, expected)], expected)
+
     def test_live_listing_maps_nhatot_payload_like_staging(self):
         ad = {'type': 's', 'subject': 'Nhà hẻm', 'price': 2600000000, 'size': 30, 'rooms': 2,
               'category_name': 'Nhà ở', 'region_v2': 13000, 'area_v2': 13110, 'ward': 9272,
-              'area_name': 'Quận Gò Vấp', 'pty_project_name': ''}
+              'area_name': 'Quận Gò Vấp', 'pty_project_name': '',
+              'images': ['https://images.example.com/live.jpg', 'javascript:alert(1)']}
         params = {'house_type': {'value': 'Nhà ngõ, hẻm'}, 'property_legal_document': {'value': 'Đã có sổ'},
                   'pty_characteristics': {'value': 'Hẻm xe hơi, Nở hậu'}}
         gateway = MagicMock(status_code=200, ok=True)
@@ -154,6 +182,8 @@ class DeploymentTests(unittest.TestCase):
         self.assertEqual((x['has_car_alley'], x['is_wide_back'], x['is_frontage']), (True, True, False))
         self.assertIsNone(x['project_name'])
         self.assertTrue(x['live'])
+        self.assertEqual(x['image_urls'], ['https://images.example.com/live.jpg'])
+        self.assertEqual(x['image_count'], 1)
         gateway.json.return_value = {}
         with patch('api.app.recommendation.live.session.get', return_value=gateway):
             self.assertEqual(requests.get(self.url+'/listing/live', params={'id': '135658788'}).status_code, 404)

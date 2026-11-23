@@ -11,6 +11,8 @@ import re
 
 import requests
 
+from recommendation.media import image_urls
+
 DETAIL_URL = 'https://gateway.chotot.com/v1/public/ad-listing/{}'
 SOURCE = 'nhatot'
 
@@ -84,10 +86,13 @@ def to_listing(list_id, payload):
         period = next((p for p, pattern in [('month', 'tháng|/th|month'), ('day', 'ngày|day'), ('year', 'năm|year')]
                        if re.search(pattern, price_raw)), 'unknown')
     as_id = lambda v: str(number(v, int)) if number(v, int) is not None else ''
+    photos = image_urls(ad.get('images'))
     return {
         'listing_key': hashlib.sha256(f'{SOURCE}||{list_id}'.encode()).hexdigest(),
         'source_listing_id': str(list_id),
         'url': DETAIL_URL.format(list_id),
+        'image_urls': photos,
+        'image_count': len(photos),
         'title': ad.get('subject'),
         'description': ad.get('body'),
         'price_vnd': number(ad.get('price')),

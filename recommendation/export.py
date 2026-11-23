@@ -14,6 +14,7 @@ from pathlib import Path, PurePosixPath
 from urllib.parse import unquote, urlparse
 
 import pyarrow as pa
+import pyarrow.compute as pc
 import pyarrow.fs as fs
 import pyarrow.parquet as pq
 
@@ -41,7 +42,7 @@ def filesystem(endpoint, env_file=None):
                           connect_timeout=5, request_timeout=60)
 
 
-def read_snapshot(storage, table, version=None):
+def read_snapshot(storage, table, version=None, *, columns=None, listing_keys=None):
     entries = storage.get_file_info(fs.FileSelector(table + '/_delta_log', recursive=False))
     logs = {int(e.base_name[:20]): e.path for e in entries if re.fullmatch(r'\d{20}\.json', e.base_name)}
     checkpoints = {int(e.base_name[:20]): e.path for e in entries
@@ -86,6 +87,9 @@ def read_snapshot(storage, table, version=None):
     if not active:
         raise ValueError('Empty Delta snapshot')
     tables = []
+    key_set = pa.array(list(listing_keys), type=pa.string()) if listing_keys is not None else None
+    if key_set is not None and columns is not None and 'listing_key' not in columns:
+        raise ValueError('Include listing_key when filtering a snapshot by listing keys')
     for name, entry in sorted(active.items()):
         if entry.get('deletionVector'):
             raise ValueError('Deletion vectors need a Delta-native reader')
@@ -93,14 +97,16 @@ def read_snapshot(storage, table, version=None):
         if '..' in PurePosixPath(relative).parts or relative.startswith('/') or '://' in relative:
             raise ValueError('Non-relative Delta add path')
         with storage.open_input_file(table + '/' + relative) as f:
-            chunk = pq.ParquetFile(f).read(use_threads=False)
+            chunk = pq.ParquetFile(f).read(columns=columns, use_threads=False)
+        if key_set is not None:
+            chunk = chunk.filter(pc.is_in(chunk['listing_key'], value_set=key_set))
         partitions = entry.get('partitionValues') or {}
         if isinstance(partitions, list):
             partitions = dict(partitions)
         for col, value in partitions.items():
             if col != 'transaction_type':
                 raise ValueError('Only transaction_type partitioning is supported')
-            if col not in chunk.column_names:
+            if col not in chunk.column_names and (columns is None or col in columns):
                 chunk = chunk.append_column(col, pa.array([value] * len(chunk), type=pa.string()))
         tables.append(chunk)
     result = pa.concat_tables(tables, promote_options='default')

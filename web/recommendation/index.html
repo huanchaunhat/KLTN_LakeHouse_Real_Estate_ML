@@ -128,14 +128,29 @@ button{font-family:inherit}
 .results-head h2{font-size:17px;font-weight:600}
 .results-head small{color:var(--muted)}
 .list{display:grid;gap:11px}
-.item{padding:16px 18px;display:grid;grid-template-columns:34px minmax(0,1fr) auto;gap:2px 12px;transition:border-color .15s}
+.item{padding:16px 18px;display:grid;grid-template-columns:30px 148px minmax(0,1fr) auto;gap:2px 12px;transition:border-color .15s}
 .item:hover{border-color:var(--line-strong)}
 .rank{font-size:15px;font-weight:700;width:30px;height:30px;border-radius:9px;background:var(--sunken);color:var(--muted);display:grid;place-items:center}
 .item:first-child .rank{background:var(--pine);color:#fff}
 .item h3{font-size:15.5px;font-weight:600;line-height:1.38;overflow-wrap:anywhere}
 .item-price{text-align:right}
 .item .price{font-size:17px}
-.item-body{grid-column:2/-1}
+.item-body{grid-column:3/-1;min-width:0}
+.item-photo{grid-column:2;grid-row:1/3;align-self:start}
+.photo{position:relative;display:grid;place-items:center;width:100%;aspect-ratio:4/3;overflow:hidden;border:1px solid var(--line);border-radius:10px;background:var(--sunken);color:var(--muted);padding:0;font:inherit;font-size:12px}
+button.photo{cursor:zoom-in}
+.photo img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.photo-empty{padding:14px;text-align:center}
+.photo-count{position:absolute;right:6px;bottom:6px;border-radius:6px;padding:2px 7px;color:white;background:rgba(0,0,0,.65);font-size:11px;pointer-events:none}
+.seed-photo{max-width:300px;margin-top:15px}
+.grade-photo{max-width:220px;margin-bottom:12px}
+.photo-viewer{width:min(960px,calc(100vw - 24px));max-height:calc(100vh - 24px);padding:16px;border:1px solid var(--line);border-radius:14px;background:var(--surface);color:var(--ink)}
+.photo-viewer::backdrop{background:rgba(0,0,0,.75)}
+.photo-viewer-head{display:flex;justify-content:space-between;align-items:center;gap:16px;margin-bottom:12px}
+.photo-viewer-head h2{font-size:16px;overflow-wrap:anywhere}
+.photo-stage{position:relative;display:grid;place-items:center;height:min(65vh,650px);background:var(--sunken);border-radius:10px;overflow:hidden}
+.photo-stage img{position:absolute;width:100%;height:100%;object-fit:contain}
+.photo-nav{display:flex;justify-content:center;align-items:center;gap:16px;margin-top:12px}
 .meta{display:flex;flex-wrap:wrap;gap:3px 14px;margin-top:6px;font-size:13.5px;color:var(--muted)}
 .chips{display:flex;flex-wrap:wrap;gap:5px;margin-top:9px}
 .chip{font-size:12px;padding:2px 9px;border-radius:999px;background:var(--sunken);color:var(--muted);font-weight:500}
@@ -194,6 +209,8 @@ footer{max-width:1200px;margin:auto;padding:0 24px 34px;font-size:12.5px;color:v
   .hero{padding-left:16px;padding-right:16px}
   .seed-top{flex-direction:column;gap:8px}.seed-price{text-align:left}
   .item{grid-template-columns:30px minmax(0,1fr)}
+  .item-photo{grid-column:2;grid-row:2;width:100%;margin:9px 0}
+  .item-body{grid-column:2}
   .item-price{grid-column:2;text-align:left;margin-top:3px}
   .grade-row{grid-template-columns:minmax(0,1fr)}
   .lookup{flex-direction:column}
@@ -328,6 +345,11 @@ footer{max-width:1200px;margin:auto;padding:0 24px 34px;font-size:12.5px;color:v
 
 <footer>Dữ liệu mua bán và cho thuê được xử lý riêng. Điểm xếp hạng là điểm nội bộ của model, chưa được kiểm chứng bằng nhãn thật. Không dùng tập test để chỉnh trọng số.</footer>
 <div id="notice" class="hidden" role="status"></div>
+<dialog id="photo-viewer" class="photo-viewer" aria-labelledby="photo-title">
+  <div class="photo-viewer-head"><h2 id="photo-title">Ảnh tin đăng</h2><button type="button" class="btn ghost" id="photo-close">Đóng</button></div>
+  <div class="photo-stage"><span id="photo-status" role="status">Đang tải ảnh…</span><img id="photo-full" alt="" referrerpolicy="no-referrer"></div>
+  <div class="photo-nav"><button type="button" class="btn ghost" id="photo-prev" aria-label="Ảnh trước">←</button><span id="photo-position" class="num" aria-live="polite"></span><button type="button" class="btn ghost" id="photo-next" aria-label="Ảnh sau">→</button></div>
+</dialog>
 
 <script>
 const $ = id => document.getElementById(id);
@@ -398,6 +420,64 @@ const openLink = x => {
 };
 const listingId = x => x.source_listing_id || x.listing_key;
 
+function photoUrls(value) {
+  return [...new Set((Array.isArray(value) ? value : []).filter(url => {
+    try { const u = new URL(url); return ['http:', 'https:'].includes(u.protocol) && !u.username && !u.password; } catch { return false; }
+  }))];
+}
+
+function photoHtml(x, extraClass='') {
+  const photos = photoUrls(x.image_urls);
+  if (!photos.length) return `<div class="photo ${extraClass}"><span class="photo-empty">Chưa có ảnh</span></div>`;
+  return `<button type="button" class="photo ${extraClass}" data-photo-urls="${esc(JSON.stringify(photos))}" data-photo-title="${esc(x.title || 'Ảnh tin đăng')}" aria-label="${esc('Xem ' + photos.length + ' ảnh của ' + (x.title || 'tin đăng'))}">
+    <span class="photo-empty">Đang tải ảnh…</span>
+    <img src="${esc(photos[0])}" alt="${esc(x.title || 'Ảnh bất động sản')}" loading="lazy" decoding="async" referrerpolicy="no-referrer">
+    <span class="photo-count">${photos.length} ảnh ↗</span>
+  </button>`;
+}
+
+let viewerPhotos = [], viewerIndex = 0;
+function showPhoto(index) {
+  viewerIndex = (index + viewerPhotos.length) % viewerPhotos.length;
+  $('photo-full').hidden = true;
+  $('photo-status').textContent = 'Đang tải ảnh…';
+  $('photo-full').alt = `${$('photo-title').textContent} · Ảnh ${viewerIndex + 1}`;
+  $('photo-full').src = viewerPhotos[viewerIndex];
+  $('photo-position').textContent = `${viewerIndex + 1} / ${viewerPhotos.length}`;
+  $('photo-prev').disabled = $('photo-next').disabled = viewerPhotos.length < 2;
+}
+document.addEventListener('click', event => {
+  const button = event.target.closest('[data-photo-urls]');
+  if (!button) return;
+  viewerPhotos = photoUrls(JSON.parse(button.dataset.photoUrls));
+  if (!viewerPhotos.length) return;
+  $('photo-title').textContent = button.dataset.photoTitle;
+  showPhoto(0);
+  $('photo-viewer').showModal();
+});
+document.addEventListener('error', event => {
+  if (event.target.matches('.photo img')) {
+    event.target.hidden = true;
+    const message = event.target.parentElement.querySelector('.photo-empty');
+    message.hidden = false;
+    message.textContent = 'Ảnh không tải được · Bấm để xem ảnh khác';
+  }
+}, true);
+document.addEventListener('load', event => {
+  if (event.target.matches('.photo img')) event.target.parentElement.querySelector('.photo-empty').hidden = true;
+}, true);
+$('photo-full').onload = () => { $('photo-full').hidden = false; $('photo-status').textContent = ''; };
+$('photo-full').onerror = () => { $('photo-full').hidden = true; $('photo-status').textContent = 'Ảnh không tải được. Bạn có thể chuyển sang ảnh khác.'; };
+$('photo-prev').onclick = () => showPhoto(viewerIndex - 1);
+$('photo-next').onclick = () => showPhoto(viewerIndex + 1);
+$('photo-close').onclick = () => $('photo-viewer').close();
+$('photo-viewer').addEventListener('keydown', event => {
+  if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
+    event.preventDefault();
+    showPhoto(viewerIndex + (event.key === 'ArrowRight' ? 1 : -1));
+  }
+});
+
 function metaHtml(x) {
   const parts = [x.area_m2 != null ? esc(area(x.area_m2)) : '', x.bedrooms != null ? `${esc(x.bedrooms)} PN` : '', x.bathrooms != null ? `${esc(x.bathrooms)} WC` : '', esc(place(x))];
   return `<div class="meta num">${parts.filter(Boolean).map(p => `<span>${p}</span>`).join('')}</div>`;
@@ -426,6 +506,7 @@ function resultCard(x, rank) {
   const compare = compareChips(x, resultSeed);
   return `<article class="panel item">
     <div class="rank num">${rank}</div>
+    ${photoHtml(x, 'item-photo')}
     <h3>${esc(x.title || x.listing_key)}</h3>
     <div class="item-price">${priceHtml(x)}<div class="score num">Điểm ${Number(x.score).toFixed(3)}</div></div>
     <div class="item-body">
@@ -449,6 +530,7 @@ function seedHtml(seed, actions='', extraClass='') {
       <div><div class="eyebrow">Tin gốc · ${esc(seed.transaction_type === 'sale' ? 'Mua bán' : 'Cho thuê')} · Mã ${esc(listingId(seed))}${seed.live ? ' · Vừa lấy từ Nhà Tốt, chưa có trong dữ liệu' : ''}</div><h2>${esc(seed.title || seed.listing_key)}</h2></div>
       <div class="seed-price">${priceHtml(seed)}</div>
     </div>
+    ${photoHtml(seed, 'seed-photo')}
     <div class="facts num">
       ${fact('Loại', [CATEGORY[seed.property_category], seed.property_subtype].filter(Boolean).join(' · '))}
       ${fact('Diện tích', seed.area_m2 != null ? area(seed.area_m2) : '')}
@@ -721,7 +803,7 @@ async function tasks() {
 }
 
 function gradeItem(x) {
-  return `<h3>${esc(x.title || x.listing_key)}</h3><div style="margin-top:2px">${priceHtml(x)}</div>${metaHtml(x)}
+  return `${photoHtml(x, 'grade-photo')}<h3>${esc(x.title || x.listing_key)}</h3><div style="margin-top:2px">${priceHtml(x)}</div>${metaHtml(x)}
     <details><summary>Mô tả tin</summary><p class="desc">${esc(x.description || 'Không có mô tả')}</p></details>
     <div class="item-actions">${openLink(x)}<span class="num" style="color:var(--faint)">Mã ${esc(listingId(x))}</span></div>`;
 }
