@@ -310,6 +310,7 @@ services:
       SUPERSET_LOAD_EXAMPLES: "no"
       SQLALCHEMY_DATABASE_URI: postgresql+psycopg2://reip:reip123@postgres:5432/reip
       SUPERSET_CONFIG_PATH: /app/superset_config.py
+      MAPBOX_API_KEY: ${MAPBOX_API_KEY:-}
     volumes:
       - superset_data:/app/superset_home
       - ./superset/superset_config.py:/app/superset_config.py:ro

@@ -76,8 +76,11 @@ select
     o.street,
     o.latitude,
     o.longitude,
-    o.project_name,
-    o.project_name is not null as is_in_project,
+    -- Project attributes come from dim_project (same values as Silver, since
+    -- the dimension is keyed on the raw name). NULL is kept for listings
+    -- outside any project so the model sees the same input as before.
+    case when prj.is_project then prj.project_name end as project_name,
+    prj.is_project as is_in_project,
 
     -- property type
     pt.property_category,
@@ -128,6 +131,8 @@ inner join {{ ref('dim_property_type') }} pt
     on f.property_type_key = pt.property_type_key
 inner join {{ ref('dim_legal_status') }} ls
     on f.legal_status_key = ls.legal_status_key
+inner join {{ ref('dim_project') }} prj
+    on f.project_key = prj.project_key
 where d.duplicate_rank = 1
   -- "Sale" ads for offices / shop space mostly quote rent or a lease-transfer
   -- fee (e.g. 150M VND for 75 m2 in District 1), not a property price.

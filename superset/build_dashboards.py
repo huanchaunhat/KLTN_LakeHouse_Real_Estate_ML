@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate the two Superset dashboards as an import bundle.
+"""Generate the Superset dashboards as an import bundle.
 
     python superset/build_dashboards.py            # writes superset/dashboards/ + dashboards.zip
     bash superset/import_dashboards.sh             # builds, then imports into the running Superset
@@ -9,11 +9,13 @@ here, so the dashboards can be rebuilt on a fresh Superset with one command
 instead of being clicked together by hand. UUIDs are derived from the names,
 so re-importing updates the existing objects in place.
 
-Dashboard 1 "Tổng quan thị trường": what is on the market, where, at what
-price, and how price and supply move week by week.
-Dashboard 2 "Phân tích giá & thị trường": what drives price (the questions
-that shaped the feature set), what is specific to each property type, price
-at ward level, and price segments.
+Five dashboards follow the five parts of the data-exploration chapter:
+1 "Tổng quan thị trường"      what is on the market, where (incl. a map).
+2 "Mặt bằng giá"              price distributions, by type, district, ward, legal status, area.
+3 "Phân khúc và cơ cấu"       price segments by type and by district.
+4 "Biến động theo thời gian"  supply and price by POSTING week, supply vs price.
+5 "Chuyên sâu theo loại hình" what is specific to houses, apartments, land.
+Dashboard "Model": test-set error of the latest price model.
 """
 
 import json
@@ -48,6 +50,15 @@ def uid(kind, name):
 # applies to every chart whose dataset has that column.
 # ---------------------------------------------------------------------------
 TYPES = "property_category IN ('HOUSE', 'APARTMENT', 'LAND')"
+
+# Time axis by POSTING date, not crawl date. Listings posted long before the
+# first crawl were mostly gone (sold, expired, rent ads removed within ~2 weeks)
+# by the time crawling began, so those weeks look empty. Keep only full weeks
+# that start at most 14 days before the first crawl and end before the last
+# day Gold has data for (Gold can lag Silver until dbt runs again).
+_WEEK = "cast(date_trunc('week', {col}) AS date)"
+POSTED_SINCE = (_WEEK + " >= date_sub((SELECT to_date(min(first_seen_at)) FROM gold.fct_listing), 14) "
+                "AND date_add(" + _WEEK + ", 6) < (SELECT to_date(max(last_seen_at)) FROM gold.fct_listing)")
 
 DATASETS = {
     # ---- Tổng quan -------------------------------------------------------
@@ -96,53 +107,6 @@ GROUP BY 1, 2, 3, 4
         columns={"loai_bds": "STRING", "giao_dich": "STRING", "quan": "STRING", "khu_vuc": "STRING",
                  "so_tin": "BIGINT", "so_tin_dang_rao": "BIGINT"},
     ),
-    "ov_xu_huong_gia_tuan": dict(
-        description="Giá/m² trung vị toàn thành phố theo tuần (gold.agg_price_trend_weekly, cấp CITY).",
-        sql="""
-SELECT
-    period_start                                 AS tuan,
-    transaction_type_label                       AS giao_dich,
-    property_type                                AS loai_bds,
-    listing_count                                AS so_tin,
-    round(median_price_per_m2 / 1e6, 2)          AS median_gia_m2_trieu,
-    round(p25_price_per_m2 / 1e6, 2)             AS p25_gia_m2_trieu,
-    round(p75_price_per_m2 / 1e6, 2)             AS p75_gia_m2_trieu,
-    round(median_price_per_m2_change_pct, 2)     AS thay_doi_so_tuan_truoc_pct,
-    is_reliable                                  AS du_tin_cay
-FROM gold.agg_price_trend_weekly
-WHERE geo_level = 'CITY'
-""",
-        columns={"tuan": "DATE", "giao_dich": "STRING", "loai_bds": "STRING", "so_tin": "BIGINT",
-                 "median_gia_m2_trieu": "DOUBLE", "p25_gia_m2_trieu": "DOUBLE", "p75_gia_m2_trieu": "DOUBLE",
-                 "thay_doi_so_tuan_truoc_pct": "DOUBLE", "du_tin_cay": "BOOLEAN"},
-        dttm="tuan",
-    ),
-    "ov_nguon_cung_tuan": dict(
-        description="Nguồn cung và thanh khoản toàn thành phố theo tuần (gold.agg_market_supply_weekly, cấp CITY).",
-        sql="""
-SELECT
-    period_start                      AS tuan,
-    transaction_type_label            AS giao_dich,
-    property_type                     AS loai_bds,
-    active_listing_count              AS tin_dang_rao,
-    new_listing_count                 AS tin_moi,
-    removed_listing_count             AS tin_go,
-    net_supply_change                 AS bien_dong_rong,
-    price_cut_listing_count           AS tin_giam_gia,
-    removal_rate_pct                  AS ty_le_go_pct,
-    price_cut_rate_pct                AS ty_le_giam_gia_pct,
-    median_price_cut_pct              AS median_muc_giam_pct,
-    median_days_on_market_at_removal  AS median_ngay_rao_khi_go,
-    is_reliable                       AS du_tin_cay
-FROM gold.agg_market_supply_weekly
-WHERE geo_level = 'CITY'
-""",
-        columns={"tuan": "DATE", "giao_dich": "STRING", "loai_bds": "STRING", "tin_dang_rao": "BIGINT",
-                 "tin_moi": "BIGINT", "tin_go": "BIGINT", "bien_dong_rong": "BIGINT", "tin_giam_gia": "BIGINT",
-                 "ty_le_go_pct": "DOUBLE", "ty_le_giam_gia_pct": "DOUBLE", "median_muc_giam_pct": "DOUBLE",
-                 "median_ngay_rao_khi_go": "DOUBLE", "du_tin_cay": "BOOLEAN"},
-        dttm="tuan",
-    ),
     "ov_gia_ban_theo_quan": dict(
         description="Giá bán trung vị theo quận và loại hình (tin bán đã làm sạch, gold.ml_price_features).",
         sql=f"""
@@ -185,6 +149,29 @@ HAVING count(*) >= 30
         columns={"quan": "STRING", "khu_vuc": "STRING", "loai_bds": "STRING", "so_tin": "BIGINT",
                  "median_gia_thue_trieu_thang": "DOUBLE"},
     ),
+    "ov_ban_do_phuong": dict(
+        description="Tâm (trung bình toạ độ) của từng phường với số tin bán sạch và giá/m² trung vị, cho bản đồ.",
+        sql=f"""
+WITH t AS (
+    SELECT ward_id, ward, district, area_zone, property_type, latitude, longitude, price_per_m2
+    FROM gold.ml_price_features
+    WHERE {TYPES} AND latitude BETWEEN 10.3 AND 11.2 AND longitude BETWEEN 106.3 AND 107.1
+),
+c AS (SELECT ward_id, round(avg(latitude), 5) AS lat, round(avg(longitude), 5) AS lon FROM t GROUP BY ward_id)
+SELECT
+    t.ward                                                 AS phuong,
+    t.district                                             AS quan,
+    t.area_zone                                            AS khu_vuc,
+    t.property_type                                        AS loai_bds,
+    c.lat, c.lon,
+    count(*)                                               AS so_tin,
+    round(percentile_approx(t.price_per_m2, 0.5) / 1e6, 1) AS median_gia_m2_trieu
+FROM t JOIN c ON t.ward_id = c.ward_id
+GROUP BY 1, 2, 3, 4, 5, 6
+""",
+        columns={"phuong": "STRING", "quan": "STRING", "khu_vuc": "STRING", "loai_bds": "STRING",
+                 "lat": "DOUBLE", "lon": "DOUBLE", "so_tin": "BIGINT", "median_gia_m2_trieu": "DOUBLE"},
+    ),
     "ov_phan_bo": dict(
         description="Từng tin bán đã làm sạch, để vẽ phân bố giá và diện tích.",
         sql=f"""
@@ -201,52 +188,6 @@ WHERE {TYPES}
         columns={"loai_bds": "STRING", "quan": "STRING", "khu_vuc": "STRING", "gia_ty": "DOUBLE",
                  "gia_m2_trieu": "DOUBLE", "dien_tich_m2": "DOUBLE"},
     ),
-    "ov_lam_sach": dict(
-        description="Từ tin bán thu được còn bao nhiêu tin sạch để phân tích giá (đếm theo tin).",
-        sql="""
-SELECT '1. Tin bán thu thập được' AS buoc, count(*) AS so_tin
-  FROM gold.fct_listing
- WHERE transaction_type = 'sale' AND is_market_eligible
-UNION ALL
-SELECT '2. Đủ thông tin, giá không bất thường', count(*)
-  FROM gold.fct_listing
- WHERE transaction_type = 'sale' AND is_price_training_eligible AND NOT is_price_outlier
-UNION ALL
-SELECT '3. Bỏ tin trùng, vị trí sai, văn phòng', count(*)
-  FROM gold.ml_price_features
-""",
-        columns={"buoc": "STRING", "so_tin": "BIGINT"},
-    ),
-    "ov_do_day_du": dict(
-        description="Tỷ lệ tin có dữ liệu ở từng thuộc tính, theo loại hình (silver.listing_current).",
-        sql="""
-WITH coverage AS (
-    SELECT
-        trim(property_type)                                   AS loai_bds,
-        avg(cast(ward_id         IS NOT NULL AS int)) * 100   AS phuong,
-        avg(cast(street          IS NOT NULL AS int)) * 100   AS duong,
-        avg(cast(bedrooms        IS NOT NULL AS int)) * 100   AS phong_ngu,
-        avg(cast(bathrooms       IS NOT NULL AS int)) * 100   AS phong_tam,
-        avg(cast(total_floors    IS NOT NULL AS int)) * 100   AS so_tang,
-        avg(cast(width_m         IS NOT NULL AS int)) * 100   AS chieu_ngang,
-        avg(cast(house_direction IS NOT NULL AS int)) * 100   AS huong,
-        avg(cast(legal_status    IS NOT NULL AS int)) * 100   AS phap_ly,
-        avg(cast(furnishing      IS NOT NULL AS int)) * 100   AS noi_that
-    FROM silver.listing_current
-    WHERE is_market_eligible
-    GROUP BY trim(property_type)
-)
-SELECT loai_bds, thuoc_tinh, round(ty_le, 1) AS ty_le_co_du_lieu_pct
-FROM coverage
-LATERAL VIEW stack(9,
-    'Phường', phuong, 'Đường', duong, 'Phòng ngủ', phong_ngu, 'Phòng tắm', phong_tam,
-    'Số tầng', so_tang, 'Chiều ngang', chieu_ngang, 'Hướng nhà', huong,
-    'Pháp lý', phap_ly, 'Nội thất', noi_that
-) t AS thuoc_tinh, ty_le
-""",
-        columns={"loai_bds": "STRING", "thuoc_tinh": "STRING", "ty_le_co_du_lieu_pct": "DOUBLE"},
-    ),
-
     # ---- Phân tích: yếu tố ảnh hưởng giá -----------------------------------
     "pt_yeu_to": dict(
         description="eta²: phần phương sai của log(giá/m²) mà mỗi yếu tố tự nó giải thích được.",
@@ -361,14 +302,15 @@ SELECT
          WHEN area_m2 < 200 THEN '5. 120–200 m²' ELSE '6. ≥ 200 m²' END  AS nhom_dien_tich,
     property_type                                                       AS loai_bds,
     count(*)                                                            AS so_tin,
-    round(percentile_approx(price_per_m2, 0.5) / 1e6, 1)                AS median_gia_m2_trieu
+    round(percentile_approx(price_per_m2, 0.5) / 1e6, 1)                AS median_gia_m2_trieu,
+    round(percentile_approx(price_vnd, 0.5) / 1e9, 2)                   AS median_gia_ty
 FROM gold.ml_price_features
 WHERE {TYPES}
 GROUP BY 1, 2
 HAVING count(*) >= 30
 """,
         columns={"nhom_dien_tich": "STRING", "loai_bds": "STRING",
-                 "so_tin": "BIGINT", "median_gia_m2_trieu": "DOUBLE"},
+                 "so_tin": "BIGINT", "median_gia_m2_trieu": "DOUBLE", "median_gia_ty": "DOUBLE"},
     ),
     "pt_dac_diem": dict(
         description="Nhà ở: chênh lệch giá/m² của nhà có một đặc điểm so với nhà không có, thô và sau khi so cùng quận cùng nhóm diện tích.",
@@ -444,25 +386,6 @@ HAVING count(*) >= 30
 """,
         columns={"loai_bds": "STRING", "phap_ly": "STRING", "so_tin": "BIGINT", "median_gia_m2_trieu": "DOUBLE"},
     ),
-    "pt_nguoi_dang": dict(
-        description="Môi giới so với cá nhân: tỷ lệ tin và giá/m² trung vị theo loại hình.",
-        sql=f"""
-SELECT
-    property_type                                                           AS loai_bds,
-    CASE WHEN is_broker THEN 'Môi giới' ELSE 'Cá nhân' END                  AS nguoi_dang,
-    count(*)                                                                AS so_tin,
-    round(100 * count(*) / sum(count(*)) OVER (PARTITION BY property_type), 1) AS ty_le_pct,
-    round(percentile_approx(price_per_m2, 0.5) / 1e6, 1)                    AS median_gia_m2_trieu,
-    round(percentile_approx(area_m2, 0.5), 0)                               AS median_dien_tich_m2
-FROM gold.ml_price_features
-WHERE {TYPES} AND is_broker IS NOT NULL
-GROUP BY 1, 2
-""",
-        columns={"loai_bds": "STRING", "nguoi_dang": "STRING", "so_tin": "BIGINT", "ty_le_pct": "DOUBLE",
-                 "median_gia_m2_trieu": "DOUBLE", "median_dien_tich_m2": "DOUBLE"},
-    ),
-
-    # ---- Phân tích: đi sâu từng loại hình ----------------------------------
     "pt_huong": dict(
         description="Giá/m² trung vị theo hướng nhà và loại hình.",
         sql=f"""
@@ -479,39 +402,37 @@ HAVING count(*) >= 30
         columns={"loai_bds": "STRING", "huong": "STRING", "so_tin": "BIGINT", "median_gia_m2_trieu": "DOUBLE"},
     ),
     "pt_nha_chieu_ngang": dict(
-        description="Nhà ở: giá/m² trung vị theo chiều ngang (mặt tiền lô) và khu vực.",
+        description="Nhà ở: giá/m² trung vị theo chiều ngang (mặt tiền lô).",
         sql="""
 SELECT
     CASE WHEN width_m < 3.5 THEN '1. < 3,5 m' WHEN width_m < 4 THEN '2. 3,5–4 m' WHEN width_m < 5 THEN '3. 4–5 m'
          WHEN width_m < 7 THEN '4. 5–7 m' ELSE '5. ≥ 7 m' END               AS chieu_ngang,
-    area_zone                                                            AS khu_vuc,
     count(*)                                                             AS so_tin,
     round(percentile_approx(price_per_m2, 0.5) / 1e6, 1)                 AS median_gia_m2_trieu,
     round(percentile_approx(area_m2, 0.5), 0)                            AS median_dien_tich_m2
 FROM gold.ml_price_features
-WHERE property_category = 'HOUSE' AND width_m IS NOT NULL AND area_zone <> 'Không rõ'
-GROUP BY 1, 2
+WHERE property_category = 'HOUSE' AND width_m IS NOT NULL
+GROUP BY 1
 HAVING count(*) >= 30
 """,
-        columns={"chieu_ngang": "STRING", "khu_vuc": "STRING", "so_tin": "BIGINT",
+        columns={"chieu_ngang": "STRING", "so_tin": "BIGINT",
                  "median_gia_m2_trieu": "DOUBLE", "median_dien_tich_m2": "DOUBLE"},
     ),
     "pt_can_ho_phong_ngu": dict(
-        description="Căn hộ: giá bán và giá/m² trung vị theo số phòng ngủ và khu vực.",
+        description="Căn hộ: giá bán và giá/m² trung vị theo số phòng ngủ.",
         sql="""
 SELECT
     cast(least(bedrooms, 4) AS int)                        AS so_phong_ngu,
-    area_zone                                              AS khu_vuc,
     count(*)                                               AS so_tin,
     round(percentile_approx(price_vnd, 0.5) / 1e9, 2)      AS median_gia_ty,
     round(percentile_approx(price_per_m2, 0.5) / 1e6, 1)   AS median_gia_m2_trieu,
     round(percentile_approx(area_m2, 0.5), 0)              AS median_dien_tich_m2
 FROM gold.ml_price_features
-WHERE property_category = 'APARTMENT' AND bedrooms >= 1 AND area_zone <> 'Không rõ'
-GROUP BY 1, 2
+WHERE property_category = 'APARTMENT' AND bedrooms >= 1
+GROUP BY 1
 HAVING count(*) >= 30
 """,
-        columns={"so_phong_ngu": "BIGINT", "khu_vuc": "STRING", "so_tin": "BIGINT", "median_gia_ty": "DOUBLE",
+        columns={"so_phong_ngu": "BIGINT", "so_tin": "BIGINT", "median_gia_ty": "DOUBLE",
                  "median_gia_m2_trieu": "DOUBLE", "median_dien_tich_m2": "DOUBLE"},
     ),
     "pt_can_ho_noi_that": dict(
@@ -533,7 +454,7 @@ HAVING count(*) >= 30
         description="Căn hộ: giá/m² trung vị của từng dự án có từ 30 tin.",
         sql="""
 SELECT
-    project_name                                           AS du_an,
+    concat(project_name, ' (', district, ')')              AS du_an,
     district                                               AS quan,
     area_zone                                              AS khu_vuc,
     count(*)                                               AS so_tin,
@@ -625,55 +546,61 @@ GROUP BY 1, 2, 3, 4
                  "so_tin": "BIGINT", "median_dien_tich_m2": "DOUBLE"},
     ),
 
-    # ---- Phân tích: diễn biến theo tuần -------------------------------------
-    "tg_gia_tuan_tp": dict(
-        description="Giá/m² và số tin đổi giá theo tuần, cấp toàn TP và nội/ngoại thành (agg_price_trend_weekly).",
-        sql="""
+    # ---- Xu hướng theo ngày đăng tin ----------------------------------------
+    "xh_tin_dang_tuan": dict(
+        description="Số tin theo tuần ĐĂNG tin (posted_at), loại hình, bán/thuê, quận. Chỉ các tuần trọn (POSTED_SINCE).",
+        sql=f"""
 SELECT
-    period_start                                 AS tuan,
-    geo_level                                    AS cap_do,
-    CASE geo_level WHEN 'CITY' THEN 'Toàn TP' ELSE geo_name END AS khu_vuc,
-    transaction_type_label                       AS giao_dich,
-    property_type                                AS loai_bds,
-    listing_count                                AS so_tin,
-    new_listing_count                            AS tin_moi,
-    price_cut_count                              AS tin_giam_gia,
-    price_rise_count                             AS tin_tang_gia,
-    round(p25_price_per_m2 / 1e6, 2)             AS p25_gia_m2_trieu,
-    round(median_price_per_m2 / 1e6, 2)          AS median_gia_m2_trieu,
-    round(p75_price_per_m2 / 1e6, 2)             AS p75_gia_m2_trieu,
-    round(median_price_per_m2_change_pct, 2)     AS thay_doi_so_tuan_truoc_pct,
-    is_reliable                                  AS du_tin_cay
-FROM gold.agg_price_trend_weekly
-WHERE geo_level IN ('CITY', 'ZONE')
+    cast(date_trunc('week', f.posted_at) AS date)                      AS tuan_dang,
+    pt.property_type                                                   AS loai_bds,
+    CASE f.transaction_type WHEN 'sale' THEN 'Bán' ELSE 'Cho thuê' END AS giao_dich,
+    loc.district                                                       AS quan,
+    loc.area_zone                                                      AS khu_vuc,
+    count(*)                                                           AS so_tin
+FROM gold.fct_listing f
+JOIN gold.dim_property_type pt ON f.property_type_key = pt.property_type_key
+JOIN gold.dim_location loc     ON f.location_key = loc.location_key
+WHERE f.is_market_eligible AND {POSTED_SINCE.format(col="f.posted_at")}
+GROUP BY 1, 2, 3, 4, 5
 """,
-        columns={"tuan": "DATE", "cap_do": "STRING", "khu_vuc": "STRING", "giao_dich": "STRING", "loai_bds": "STRING",
-                 "so_tin": "BIGINT", "tin_moi": "BIGINT", "tin_giam_gia": "BIGINT", "tin_tang_gia": "BIGINT",
-                 "p25_gia_m2_trieu": "DOUBLE", "median_gia_m2_trieu": "DOUBLE", "p75_gia_m2_trieu": "DOUBLE",
-                 "thay_doi_so_tuan_truoc_pct": "DOUBLE", "du_tin_cay": "BOOLEAN"},
-        dttm="tuan",
+        columns={"tuan_dang": "DATE", "loai_bds": "STRING", "giao_dich": "STRING", "quan": "STRING",
+                 "khu_vuc": "STRING", "so_tin": "BIGINT"},
+        dttm="tuan_dang",
     ),
-    "tg_cung_tuan_tp": dict(
-        description="Nguồn cung theo tuần, cấp toàn TP và nội/ngoại thành (agg_market_supply_weekly).",
-        sql="""
+    "xh_gia_tuan_dang": dict(
+        description="Giá/m² trung vị theo tuần ĐĂNG tin và loại hình (tin bán đã làm sạch), toàn TP.",
+        sql=f"""
 SELECT
-    period_start                      AS tuan,
-    geo_level                         AS cap_do,
-    CASE geo_level WHEN 'CITY' THEN 'Toàn TP' ELSE geo_name END AS khu_vuc,
-    transaction_type_label            AS giao_dich,
-    property_type                     AS loai_bds,
-    active_listing_count              AS tin_dang_rao,
-    new_listing_count                 AS tin_moi,
-    removed_listing_count             AS tin_go,
-    net_supply_change                 AS bien_dong_rong,
-    is_reliable                       AS du_tin_cay
-FROM gold.agg_market_supply_weekly
-WHERE geo_level IN ('CITY', 'ZONE')
+    cast(date_trunc('week', posted_date) AS date)          AS tuan_dang,
+    property_type                                          AS loai_bds,
+    count(*)                                               AS so_tin,
+    round(percentile_approx(price_per_m2, 0.5) / 1e6, 1)   AS median_gia_m2_trieu,
+    round(percentile_approx(price_vnd, 0.5) / 1e9, 2)      AS median_gia_ty
+FROM gold.ml_price_features
+WHERE {TYPES} AND {POSTED_SINCE.format(col="posted_date")}
+GROUP BY 1, 2
+HAVING count(*) >= 30
 """,
-        columns={"tuan": "DATE", "cap_do": "STRING", "khu_vuc": "STRING", "giao_dich": "STRING", "loai_bds": "STRING",
-                 "tin_dang_rao": "BIGINT", "tin_moi": "BIGINT", "tin_go": "BIGINT", "bien_dong_rong": "BIGINT",
-                 "du_tin_cay": "BOOLEAN"},
-        dttm="tuan",
+        columns={"tuan_dang": "DATE", "loai_bds": "STRING", "so_tin": "BIGINT",
+                 "median_gia_m2_trieu": "DOUBLE", "median_gia_ty": "DOUBLE"},
+        dttm="tuan_dang",
+    ),
+    "xh_gia_loai": dict(
+        description="Mặt bằng giá/m² của từng loại hình: P25, trung vị, P75 (tin bán đã làm sạch).",
+        sql=f"""
+SELECT
+    property_type                                          AS loai_bds,
+    count(*)                                               AS so_tin,
+    round(percentile_approx(price_per_m2, 0.25) / 1e6, 1)  AS p25_gia_m2_trieu,
+    round(percentile_approx(price_per_m2, 0.5) / 1e6, 1)   AS median_gia_m2_trieu,
+    round(percentile_approx(price_per_m2, 0.75) / 1e6, 1)  AS p75_gia_m2_trieu,
+    round(percentile_approx(price_vnd, 0.5) / 1e9, 2)      AS median_gia_ty
+FROM gold.ml_price_features
+WHERE {TYPES}
+GROUP BY 1
+""",
+        columns={"loai_bds": "STRING", "so_tin": "BIGINT", "p25_gia_m2_trieu": "DOUBLE",
+                 "median_gia_m2_trieu": "DOUBLE", "p75_gia_m2_trieu": "DOUBLE", "median_gia_ty": "DOUBLE"},
     ),
 
     # ---- Mô hình dự đoán giá -----------------------------------------------
@@ -724,6 +651,7 @@ def where(sql):
             "filterOptionName": "filter_" + uid("f", sql)[:8]}
 
 
+TIME_COLS = {"tuan", "tuan_dang", "khoang_cach_km", "so_tang", "so_phong_ngu"}
 COMMON = {"color_scheme": "supersetColors", "extra_form_data": {}, "dashboards": []}
 
 
@@ -736,7 +664,8 @@ def big_number(name, dataset, sql, label, subheader, fmt="SMART_NUMBER", **extra
 
 def bar(name, dataset, x, metrics, series=None, filters=(), horizontal=False, stack=None,
         sort_by_metric=False, y_format="SMART_NUMBER", x_title="", y_title="", show_value=False,
-        description=None, time_axis=False, row_limit=1000, order_desc=True):
+        description=None, time_axis=False, row_limit=1000, order_desc=True,
+        sort_series="sum", legend_type="scroll"):
     params = {
         **COMMON, "x_axis": x, "time_grain_sqla": None,
         "metrics": metrics, "groupby": [series] if series else [],
@@ -752,11 +681,13 @@ def bar(name, dataset, x, metrics, series=None, filters=(), horizontal=False, st
         "annotation_layers": [], "forecastPeriods": 10, "forecastInterval": 0.8,
         "x_axis_title": x_title, "x_axis_title_margin": 30 if x_title else 15,
         "y_axis_title": y_title, "y_axis_title_margin": 30 if y_title else 15,
-        "y_axis_title_position": "Left", "sort_series_type": "sum",
+        "y_axis_title_position": "Left", "sort_series_type": sort_series, "sort_series_ascending": sort_series == "name",
         "only_total": True, "show_value": show_value,
-        "show_legend": bool(series) or len(metrics) > 1, "legendType": "scroll", "legendOrientation": "top",
+        "show_legend": bool(series) or len(metrics) > 1, "legendType": legend_type, "legendOrientation": "top",
         "x_axis_time_format": "smart_date", "y_axis_format": y_format, "y_axis_bounds": [None, None],
         "rich_tooltip": True, "tooltipTimeFormat": "smart_date",
+        # ECharts silently drops overlapping category labels; rotate so all show.
+        "xAxisLabelRotation": 0 if horizontal or x in TIME_COLS else 45,
     }
     return dict(name=name, dataset=dataset, viz_type="echarts_timeseries_bar", params=params,
                 description=description)
@@ -779,6 +710,7 @@ def line(name, dataset, x, metrics, series=None, filters=(), y_format="SMART_NUM
         "only_total": True, "show_legend": True, "legendType": "scroll", "legendOrientation": "top",
         "x_axis_time_format": "smart_date", "y_axis_format": y_format, "y_axis_bounds": [None, None],
         "rich_tooltip": True, "tooltipTimeFormat": "smart_date",
+        "xAxisLabelRotation": 0 if x in TIME_COLS else 45,
     }
     viz = "echarts_area" if area else "echarts_timeseries_line"
     return dict(name=name, dataset=dataset, viz_type=viz, params=params, description=description)
@@ -810,6 +742,52 @@ def funnel(name, dataset, dim, sql, label, description=None):
         "tooltip_label_type": "key_value_percent"})
 
 
+def pie(name, dataset, dim, sql, label, filters=(), description=None):
+    return dict(name=name, dataset=dataset, viz_type="pie", description=description, params={
+        **COMMON, "groupby": [dim], "metric": metric(sql, label), "adhoc_filters": [where(f) for f in filters],
+        "row_limit": 100, "sort_by_metric": True, "number_format": "SMART_NUMBER", "date_format": "smart_date",
+        "show_labels_threshold": 3, "show_legend": True, "legendType": "plain", "legendOrientation": "top",
+        "label_type": "percent", "show_labels": True, "labels_outside": False, "label_line": False,
+        "outerRadius": 70, "donut": True, "innerRadius": 35, "show_total": True})
+
+
+def scatter_map(name, dataset, sql, label, description=None):
+    """deck.gl scatter: one circle per (lat, lon), radius = metric. Base map tiles need MAPBOX_API_KEY."""
+    return dict(name=name, dataset=dataset, viz_type="deck_scatter", description=description, params={
+        **COMMON, "spatial": {"type": "latlong", "latCol": "lat", "lonCol": "lon"},
+        "point_radius_fixed": {"type": "metric", "value": metric(sql, label)},
+        "point_unit": "square_m", "min_radius": 4, "max_radius": 60, "multiplier": 1,
+        "dimension": None, "color_picker": {"r": 0, "g": 122, "b": 135, "a": 0.6},
+        "viewport": {"latitude": 10.78, "longitude": 106.68, "zoom": 10.2, "bearing": 0, "pitch": 0},
+        "autozoom": False, "mapbox_style": "mapbox://styles/mapbox/light-v9",
+        "adhoc_filters": [], "row_limit": 5000, "filter_nulls": True, "legend_position": "tr",
+        "js_columns": [], "js_data_mutator": "", "js_tooltip": "", "js_onclick_href": ""})
+
+
+def mixed(name, dataset, x, metric_a, metric_b, series=None, filters=(), y_title_a="", y_title_b="",
+          fmt_a="SMART_NUMBER", fmt_b="SMART_NUMBER", description=None):
+    """Bars (query A, left axis) + line (query B, right axis) on the same x, both split by `series`."""
+    f = [where(c) for c in filters]
+    g = [series] if series else []
+    return dict(name=name, dataset=dataset, viz_type="mixed_timeseries", description=description, params={
+        **COMMON, "x_axis": x, "time_grain_sqla": None,
+        "metrics": [metric_a], "groupby": g, "adhoc_filters": f, "row_limit": 1000, "order_desc": True,
+        "truncate_metric": True, "show_empty_columns": True,
+        "metrics_b": [metric_b], "groupby_b": g, "adhoc_filters_b": f, "row_limit_b": 1000, "order_desc_b": True,
+        "truncate_metric_b": True, "show_empty_columns_b": True,
+        "seriesType": "bar", "stack": None, "area": False, "show_value": False, "opacity": 0.5,
+        "markerEnabled": False, "markerSize": 6, "yAxisIndex": 0,
+        "seriesTypeB": "line", "stackB": None, "areaB": False, "show_valueB": False, "opacityB": 1,
+        "markerEnabledB": True, "markerSizeB": 6, "yAxisIndexB": 1,
+        "y_axis_format": fmt_a, "y_axis_format_secondary": fmt_b,
+        "yAxisTitle": y_title_a, "yAxisTitleSecondary": y_title_b, "yAxisTitleMargin": 30,
+        "logAxis": False, "logAxisSecondary": False, "minorSplitLine": False, "truncateYAxis": False,
+        "y_axis_bounds": [None, None], "y_axis_bounds_secondary": [None, None],
+        "x_axis_title": "", "x_axis_title_margin": 15, "x_axis_time_format": "smart_date",
+        "rich_tooltip": True, "tooltipTimeFormat": "smart_date", "zoomable": False,
+        "show_legend": True, "legendType": "plain", "legendOrientation": "top"})
+
+
 # ---------------------------------------------------------------------------
 # The charts. Keys are referenced by the dashboard layouts below.
 # ---------------------------------------------------------------------------
@@ -831,17 +809,6 @@ CHARTS = {
                      [M("SUM(so_tin)", "Số tin")], series="giao_dich", stack="Stack", horizontal=True,
                      filters=["quan <> 'Không rõ'"], y_title="Số tin"),
 
-    # ---- Tổng quan: theo tuần --------------------------------------------
-    "xu_huong_gia": line("Giá/m² trung vị theo tuần (tin bán, toàn TP)", "ov_xu_huong_gia_tuan", "tuan",
-                         [M("MAX(median_gia_m2_trieu)", "Triệu/m²")], series="loai_bds",
-                         filters=["giao_dich = 'Bán'", "du_tin_cay"], y_format=",.1f", y_title="Triệu đồng/m²",
-                         time_axis=True,
-                         description="Trung vị giá/m² của mọi tin bán còn rao trong tuần. Tuần ít tin bị bỏ (du_tin_cay)."),
-    "nguon_cung": bar("Tin bán mới và tin bị gỡ theo tuần (toàn TP)", "ov_nguon_cung_tuan", "tuan",
-                      [M("SUM(tin_moi)", "Tin mới"), M("SUM(tin_go)", "Tin gỡ")],
-                      filters=["giao_dich = 'Bán'"], y_title="Số tin", time_axis=True,
-                      description="Tin mới không tính tin đã có sẵn ở lần crawl đầu tiên. Tin gỡ gồm cả tin hết hạn sau 30 ngày, không chỉ tin đã bán."),
-
     # ---- Tổng quan: theo quận ---------------------------------------------
     "gia_quan": bar("Giá/m² trung vị theo quận và loại hình (tin bán)", "ov_gia_ban_theo_quan", "quan",
                     [M("MAX(median_gia_m2_trieu)", "Triệu/m²")], series="loai_bds", horizontal=True,
@@ -855,11 +822,6 @@ CHARTS = {
     "pb_gia": histogram("Phân bố giá bán (tỷ đồng)", "ov_phan_bo", "gia_ty", filters=["gia_ty <= 50"], x_label="Tỷ đồng"),
     "pb_gia_m2": histogram("Phân bố giá/m² (triệu đồng)", "ov_phan_bo", "gia_m2_trieu", filters=["gia_m2_trieu <= 500"], x_label="Triệu đồng/m²"),
     "pb_dien_tich": histogram("Phân bố diện tích (m²)", "ov_phan_bo", "dien_tich_m2", filters=["dien_tich_m2 <= 500"], x_label="m²"),
-
-    # ---- Tổng quan: chất lượng dữ liệu --------------------------------------
-    "lam_sach": funnel("Từ tin bán thu được tới tin sạch để phân tích giá", "ov_lam_sach", "buoc", "MAX(so_tin)", "Số tin"),
-    "do_day_du": heatmap("Tỷ lệ tin có dữ liệu ở từng thuộc tính (%)", "ov_do_day_du", "thuoc_tinh", "loai_bds",
-                         "MAX(ty_le_co_du_lieu_pct)", "% có dữ liệu"),
 
     # ---- Phân tích A: yếu tố ảnh hưởng giá ----------------------------------
     "yeu_to": bar("Yếu tố nào giải thích được nhiều biến động giá/m² nhất (eta²)", "pt_yeu_to", "yeu_to",
@@ -886,9 +848,6 @@ CHARTS = {
     "phap_ly": bar("Giá/m² theo pháp lý", "pt_phap_ly", "phap_ly",
                    [M("MAX(median_gia_m2_trieu)", "Triệu/m²")], series="loai_bds", y_format=",.1f",
                    y_title="Triệu đồng/m²"),
-    "nguoi_dang": bar("Môi giới so với cá nhân: giá/m² trung vị", "pt_nguoi_dang", "loai_bds",
-                      [M("MAX(median_gia_m2_trieu)", "Triệu/m²")], series="nguoi_dang", y_format=",.1f",
-                      y_title="Triệu đồng/m²"),
 
     # ---- Phân tích: đi sâu từng loại hình ----------------------------------
     "huong": bar("Giá/m² theo hướng nhà", "pt_huong", "huong",
@@ -896,18 +855,19 @@ CHARTS = {
                  y_title="Triệu đồng/m²",
                  description="Chỉ tin có ghi hướng (khoảng một phần ba). Chênh lệch nhỏ so với vị trí và diện tích."),
     "chieu_ngang": line("Nhà ở: chiều ngang lô càng rộng, giá/m² càng cao?", "pt_nha_chieu_ngang", "chieu_ngang",
-                        [M("MAX(median_gia_m2_trieu)", "Triệu/m²")], series="khu_vuc", y_format=",.1f",
+                        [M("MAX(median_gia_m2_trieu)", "Triệu/m²")], y_format=",.1f",
                         y_title="Triệu đồng/m²"),
     "phong_ngu": bar("Căn hộ: giá bán trung vị theo số phòng ngủ", "pt_can_ho_phong_ngu", "so_phong_ngu",
-                     [M("MAX(median_gia_ty)", "Tỷ đồng")], series="khu_vuc", y_format=",.2f",
+                     [M("MAX(median_gia_ty)", "Tỷ đồng")], y_format=",.2f",
                      x_title="Số phòng ngủ (4 = từ 4)", y_title="Tỷ đồng"),
     "noi_that": bar("Căn hộ: giá/m² theo nội thất", "pt_can_ho_noi_that", "noi_that",
                     [M("MAX(median_gia_m2_trieu)", "Triệu/m²")], series="ban_giao", y_format=",.1f",
                     y_title="Triệu đồng/m²"),
-    "du_an": bar("Căn hộ: 20 dự án giá/m² cao nhất (từ 30 tin)", "pt_du_an", "du_an",
+    "du_an": bar("Căn hộ: 10 dự án giá/m² cao nhất (từ 30 tin)", "pt_du_an", "du_an",
                  [M("MAX(median_gia_m2_trieu)", "Triệu/m²")], horizontal=True, sort_by_metric=True,
-                 y_format=",.1f", y_title="Triệu đồng/m²",
-                 description="Lọc Quận để xem dự án trong một quận."),
+                 y_format=",.1f", y_title="Triệu đồng/m²", show_value=True, row_limit=10,
+                 description="Chọn một Quận: các dự án cùng quận vẫn chênh giá/m² lớn, "
+                             "nên dự án là yếu tố riêng của căn hộ ngoài vị trí."),
     "loai_dat": bar("Đất: giá/m² theo loại đất và nhóm diện tích", "pt_dat", "nhom_dien_tich",
                     [M("MAX(median_gia_m2_trieu)", "Triệu/m²")], series="loai_dat", y_format=",.1f",
                     y_title="Triệu đồng/m²",
@@ -926,39 +886,56 @@ CHARTS = {
                               "nhom_dien_tich", "quan", "MAX(median_gia_m2_trieu)", "Triệu/m²",
                               description="Đọc theo hàng: cùng một quận, nhà nhỏ có giá/m² cao hơn nhà lớn bao nhiêu."),
 
-    # ---- Phân tích: phân khúc giá ------------------------------------------
+    # ---- Xu hướng theo ngày đăng tin ----------------------------------------
+    "xh_gia": line("Giá đang tăng hay giảm: giá/m² trung vị theo tuần đăng tin", "xh_gia_tuan_dang", "tuan_dang",
+                   [M("MAX(median_gia_m2_trieu)", "Triệu/m²")], series="loai_bds", y_format=",.1f",
+                   y_title="Triệu đồng/m²",
+                   description="Tin bán đã làm sạch, gom theo tuần đăng. Tuần dưới 30 tin bị bỏ."),
+    "xh_gia_loai": bar("Loại hình nào có mặt bằng giá cao hơn (giá/m²)", "xh_gia_loai", "loai_bds",
+                       [M("MAX(p25_gia_m2_trieu)", "P25"), M("MAX(median_gia_m2_trieu)", "Trung vị"),
+                        M("MAX(p75_gia_m2_trieu)", "P75")],
+                       horizontal=True, y_format=",.1f", y_title="Triệu đồng/m²", show_value=True,
+                       description="P25–P75 là khoảng giá của một nửa số tin ở giữa."),
+    "xh_phan_khuc": bar("Phân khúc giá nào chiếm ưu thế trong từng loại hình (% số tin)", "tk_phan_khuc", "loai_bds",
+                        [M("SUM(so_tin)", "Số tin")], series="phan_khuc", stack="Expand", y_format=".0%",
+                        sort_series="name", legend_type="plain",
+                        description="Mỗi cột là một loại hình, chia theo tỷ trọng từng phân khúc giá bán."),
+    "xh_co_cau": pie("Cơ cấu bất động sản trên thị trường (bán + cho thuê)", "xh_tin_dang_tuan", "loai_bds",
+                     "SUM(so_tin)", "Số tin",
+                     description="Tỷ trọng số tin đăng theo loại hình trong cùng khoảng thời gian với các chart theo tuần."),
+    "xh_so_tin": line("Số tin đăng mới theo tuần đăng tin", "xh_tin_dang_tuan", "tuan_dang",
+                      [M("SUM(so_tin)", "Số tin")], series="giao_dich", y_title="Số tin",
+                      description="Đếm theo ngày người bán đăng tin, không theo ngày crawl."),
+    "xh_dong_gop": bar("Loại hình nào đóng góp nhiều nhất vào nguồn cung", "xh_tin_dang_tuan",
+                       "tuan_dang", [M("SUM(so_tin)", "Số tin")], series="loai_bds", stack="Stack", y_title="Số tin",
+                       legend_type="plain",
+                       description="Mỗi cột là số tin đăng trong tuần, chia theo loại hình (bán + cho thuê)."),
+
+    # ---- Bổ sung cho cấu trúc 5 phần ----------------------------------------
+    "ban_do": scatter_map("Bản đồ nguồn cung: mỗi chấm là một phường, to theo số tin bán", "ov_ban_do_phuong",
+                          "SUM(so_tin)", "Số tin",
+                          description="Tâm phường = trung bình toạ độ các tin. Lọc Loại hình hoặc Quận để thu hẹp."),
+    "dien_tich_gia": line("Giá bán trung vị theo nhóm diện tích (tỷ đồng)", "pt_dien_tich", "nhom_dien_tich",
+                          [M("MAX(median_gia_ty)", "Tỷ đồng")], series="loai_bds", y_format=",.2f",
+                          y_title="Tỷ đồng",
+                          description="Đọc cùng chart giá/m²: giá bán tăng theo diện tích nhưng giá/m² lại giảm."),
     "phan_khuc_tin": bar("Số tin bán theo phân khúc giá và loại hình", "tk_phan_khuc", "phan_khuc",
                          [M("SUM(so_tin)", "Số tin")], series="loai_bds", stack="Stack", y_title="Số tin",
                          description="Lọc Quận để xem cơ cấu phân khúc của một quận."),
     "phan_khuc_quan": bar("Cơ cấu phân khúc giá của từng quận (% số tin)", "tk_phan_khuc", "quan",
                           [M("SUM(so_tin)", "Số tin")], series="phan_khuc", stack="Expand", horizontal=True,
+                          sort_series="name", legend_type="plain",
                           filters=["quan <> 'Không rõ'"], y_format=".0%",
                           description="Mỗi thanh là một quận, chia theo tỷ trọng từng phân khúc. Quận có phần tím/xanh đậm dài là quận bán tầm giá cao."),
-    "phan_khuc_khu_vuc": bar("Phân khúc giá: nội thành so với ngoại thành", "tk_phan_khuc", "khu_vuc",
-                             [M("SUM(so_tin)", "Số tin")], series="phan_khuc", stack="Stack", y_title="Số tin",
-                             filters=["khu_vuc <> 'Không rõ'"]),
-
-    # ---- Phân tích: diễn biến theo tuần -------------------------------------
-    "tg_gia_khu_vuc": line("Giá/m² trung vị theo tuần: nội thành so với ngoại thành", "tg_gia_tuan_tp", "tuan",
-                           [M("MAX(median_gia_m2_trieu)", "Triệu/m²")], series="khu_vuc",
-                           filters=["cap_do = 'ZONE'", "giao_dich = 'Bán'", "du_tin_cay"], y_format=",.1f",
-                           y_title="Triệu đồng/m²",
-                           description="Trung vị giá/m² của mọi tin bán còn rao trong tuần, theo loại hình đang chọn."),
-    "tg_thay_doi": bar("Giá/m² toàn TP thay đổi so với tuần trước (%)", "tg_gia_tuan_tp", "tuan",
-                       [M("MAX(thay_doi_so_tuan_truoc_pct)", "% so với tuần trước")], series="loai_bds",
-                       filters=["cap_do = 'CITY'", "giao_dich = 'Bán'", "thay_doi_so_tuan_truoc_pct IS NOT NULL"],
-                       y_format=",.2f", description="Dao động vài phần trăm quanh 0 là bình thường: tin mới đăng và tin hết hạn mỗi tuần làm trung vị nhích lên xuống."),
-    "tg_dang_rao": line("Tin bán đang rao theo tuần", "tg_cung_tuan_tp", "tuan",
-                        [M("MAX(tin_dang_rao)", "Tin đang rao")], series="khu_vuc",
-                        filters=["cap_do = 'ZONE'", "giao_dich = 'Bán'"], y_title="Số tin",
-                        description="Thị trường đang phình hay co: số tin bán còn hiển thị mỗi tuần."),
-    "tg_tin_moi": bar("Tin bán mới theo tuần: nội thành so với ngoại thành", "tg_cung_tuan_tp", "tuan",
-                      [M("SUM(tin_moi)", "Tin mới")], series="khu_vuc", stack="Stack",
-                      filters=["cap_do = 'ZONE'", "giao_dich = 'Bán'"], y_title="Số tin"),
-    "tg_doi_gia": bar("Tin tăng giá và giảm giá theo tuần (toàn TP)", "tg_gia_tuan_tp", "tuan",
-                      [M("SUM(tin_tang_gia)", "Tăng giá"), M("SUM(tin_giam_gia)", "Giảm giá")],
-                      filters=["cap_do = 'CITY'", "giao_dich = 'Bán'"], y_title="Số tin",
-                      description="Giảm nhiều hơn tăng kéo dài nhiều tuần là tín hiệu thị trường đang hạ nhiệt."),
+    "xh_co_cau_tuan": bar("Cơ cấu nguồn cung theo loại hình từng tuần (% số tin)", "xh_tin_dang_tuan", "tuan_dang",
+                          [M("SUM(so_tin)", "Số tin")], series="loai_bds", stack="Expand", y_format=".0%",
+                          legend_type="plain",
+                          description="Tỷ trọng từng loại hình trong số tin đăng mỗi tuần; cơ cấu ổn định hay đang dịch chuyển."),
+    "cung_gia": mixed("Nguồn cung mới và giá/m² theo tuần đăng tin (tin bán)", "xh_gia_tuan_dang", "tuan_dang",
+                      M("SUM(so_tin)", "Tin bán mới"), M("MAX(median_gia_m2_trieu)", "Giá/m²"), series="loai_bds",
+                      y_title_a="Số tin", y_title_b="Triệu đồng/m²", fmt_b=",.1f",
+                      description="Cột: số tin bán sạch đăng trong tuần (trục trái). Đường: giá/m² trung vị của chúng (trục phải), "
+                                  "mỗi loại hình một màu. Lọc một loại hình để đọc rõ: nhiều cung hơn có đi kèm giá thấp hơn không."),
 
     # ---- Mô hình dự đoán giá -----------------------------------------------
     "mh_mape": big_number("MAPE trên tập test", "mh_sai_so", "AVG(sai_so_pct)", "MAPE %", "sai số tuyệt đối trung bình, %", fmt=",.2f"),
@@ -994,63 +971,113 @@ def md(text, height=12):
 
 DASHBOARDS = {
     "tong_quan": dict(
-        title="Tổng quan thị trường BĐS TP.HCM",
+        title="1. Tổng quan thị trường bất động sản",
         slug="tong-quan-thi-truong",
-        description="Thị trường có gì, ở đâu, giá bao nhiêu, và giá cùng nguồn cung đổi thế nào theo tuần.",
+        description="Thị trường có gì, bao nhiêu tin theo loại hình và mục đích, phân bố theo quận và trên bản đồ.",
         filters=[("Loại hình", "loai_bds", "ov_tin_theo_loai_quan"),
                  ("Quận", "quan", "ov_tin_theo_loai_quan"),
                  ("Khu vực", "khu_vuc", "ov_tin_theo_loai_quan")],
         rows=[
-            [md("### Thị trường bất động sản TP.HCM qua dữ liệu Nhà Tốt\n"
-                "Nguồn: tầng Gold của lakehouse, cập nhật sau mỗi lần crawl hằng ngày. "
-                "Giá bán tính trên tin bán đã làm sạch và loại giá bất thường. "
-                "Bộ lọc **Loại hình**, **Quận**, **Khu vực** áp dụng cho các chart có cột tương ứng; "
-                "các chart theo tuần tính trên toàn thành phố.", 14)],
+            [md("### 1. Tổng quan thị trường bất động sản TP.HCM\n"
+                "Nguồn: tầng Gold của lakehouse, dữ liệu Nhà Tốt, cập nhật sau mỗi lần crawl. "
+                "Bộ lọc **Loại hình**, **Quận**, **Khu vực** áp dụng cho các chart có cột tương ứng.", 12)],
             [("kpi_ban", 2, 32), ("kpi_thue", 2, 32), ("kpi_moi", 2, 32), ("kpi_gia", 2, 32), ("kpi_gia_ty", 2, 32), ("kpi_sach", 2, 32)],
-            [md("#### 1. Thị trường có gì và ở đâu")],
-            [("co_cau", 5, 50), ("theo_quan", 7, 50)],
-            [md("#### 2. Giá và nguồn cung đổi thế nào theo tuần")],
-            [("xu_huong_gia", 7, 50), ("nguon_cung", 5, 50)],
-            [md("#### 3. Giá theo quận")],
-            [("gia_quan", 7, 70), ("gia_thue_quan", 5, 70)],
-            [md("#### 4. Phân bố giá và diện tích (tin bán)")],
-            [("pb_gia", 4, 40), ("pb_gia_m2", 4, 40), ("pb_dien_tich", 4, 40)],
-            [md("#### 5. Dữ liệu sạch đến đâu")],
-            [("lam_sach", 5, 45), ("do_day_du", 7, 45)],
+            [md("#### 1.1. Cơ cấu loại hình bất động sản")],
+            [("xh_co_cau", 12, 55)],
+            [md("#### 1.2. Số lượng tin theo loại hình và mục đích")],
+            [("co_cau", 12, 55)],
+            [md("#### 1.3. Phân bố tin đăng theo quận")],
+            [("theo_quan", 12, 65)],
+            [md("#### 1.4. Bản đồ phân bố nguồn cung")],
+            [("ban_do", 12, 90)],
         ],
     ),
-    "phan_tich": dict(
-        title="Phân tích giá và thị trường BĐS TP.HCM",
-        slug="phan-tich-gia-thi-truong",
-        description="Yếu tố nào quyết định giá, từng loại hình khác nhau ra sao, vị trí chi tiết và phân khúc giá.",
+    "mat_bang_gia": dict(
+        title="2. Phân tích mặt bằng giá bất động sản",
+        slug="mat-bang-gia",
+        description="Phân bố giá, so sánh giữa loại hình, giá bán và giá thuê theo quận, xếp hạng phường, pháp lý, diện tích.",
         filters=[("Loại hình", "loai_bds", "ov_gia_ban_theo_quan", "Nhà ở"),
                  ("Quận", "quan", "ov_gia_ban_theo_quan"),
                  ("Khu vực", "khu_vuc", "ov_gia_ban_theo_quan")],
         rows=[
-            [md("### Phân tích giá bất động sản TP.HCM\n"
-                "Tin bán đã làm sạch (`gold.ml_price_features`), giá/m² tính bằng triệu đồng, dùng trung vị, "
-                "nhóm dưới 30 tin bị loại. Bộ lọc **Loại hình** mặc định là nhà ở; chọn thêm để so sánh các loại. **A** xếp hạng các yếu tố và xem từng yếu tố sau khi đã so cùng quận, cùng diện tích. "
-                "**B** đi sâu vào đặc điểm riêng của nhà ở, căn hộ, đất. **C** nhìn vị trí ở mức phường. "
-                "**D** cho biết thị trường tập trung ở phân khúc giá nào. **E** dùng dữ liệu lịch sử để xem giá và nguồn cung đổi thế nào theo tuần.", 16)],
-            [md("#### A. Yếu tố nào quyết định giá?")],
-            [("yeu_to", 6, 60), ("khoang_cach", 6, 60)],
-            [("dien_tich", 6, 50), ("dac_diem", 6, 50)],
-            [("phap_ly", 4, 45), ("nguoi_dang", 4, 45), ("huong", 4, 45)],
-            [md("#### B. Đi sâu từng loại hình")],
-            [("so_tang", 6, 50), ("chieu_ngang", 6, 50)],
-            [("phong_ngu", 4, 50), ("noi_that", 4, 50), ("loai_dat", 4, 50)],
-            [("du_an", 12, 70)],
-            [md("#### C. Vị trí ở mức phường")],
+            [md("### 2. Phân tích mặt bằng giá bất động sản\n"
+                "Giá tính trên tin bán đã làm sạch (`gold.ml_price_features`), đơn vị triệu đồng/m², dùng trung vị, "
+                "nhóm dưới 30 tin bị loại. Bộ lọc **Loại hình** mặc định là nhà ở; chọn thêm để so sánh.", 12)],
+            [md("#### 2.1. Phân bố giá bán, giá/m² và diện tích")],
+            [("pb_gia", 4, 45), ("pb_gia_m2", 4, 45), ("pb_dien_tich", 4, 45)],
+            [md("#### 2.2. So sánh giá giữa các loại hình")],
+            [("xh_gia_loai", 12, 50)],
+            [md("#### 2.3. Giá bán theo quận")],
+            [("gia_quan", 7, 65), ("khoang_cach", 5, 65)],
+            [md("#### 2.4. Giá thuê theo quận")],
+            [("gia_thue_quan", 12, 60)],
+            [md("#### 2.5. Xếp hạng giá theo phường")],
             [("phuong_cao", 6, 50), ("phuong_thap", 6, 50)],
+            [md("#### 2.6. Giá theo tình trạng pháp lý")],
+            [("phap_ly", 12, 50)],
+            [md("#### 2.7. Mối quan hệ giữa diện tích và giá bán")],
+            [("dien_tich_gia", 6, 50), ("dien_tich", 6, 50)],
             [("quan_dien_tich", 12, 70)],
-            [md("#### D. Phân khúc giá")],
-            [("phan_khuc_tin", 6, 50), ("phan_khuc_khu_vuc", 6, 50)],
-            [("phan_khuc_quan", 12, 70)],
-            [md("#### E. Diễn biến theo tuần (dữ liệu lịch sử từ 05/10/2026)\n"
-                "Mỗi lần crawl là một ảnh chụp thị trường; các chart dưới đây so các ảnh chụp với nhau. "
-                "Mới có vài tuần nên chỉ nên đọc chiều hướng, chưa nên kết luận xu hướng dài hạn.", 12)],
-            [("tg_gia_khu_vuc", 6, 50), ("tg_thay_doi", 6, 50)],
-            [("tg_dang_rao", 4, 45), ("tg_tin_moi", 4, 45), ("tg_doi_gia", 4, 45)],
+        ],
+    ),
+    "phan_khuc": dict(
+        title="3. Phân tích phân khúc và cơ cấu thị trường",
+        slug="phan-khuc-thi-truong",
+        description="Thị trường tập trung ở phân khúc giá nào, theo loại hình và theo quận.",
+        filters=[("Loại hình", "loai_bds", "tk_phan_khuc"),
+                 ("Quận", "quan", "tk_phan_khuc"),
+                 ("Khu vực", "khu_vuc", "tk_phan_khuc")],
+        rows=[
+            [md("### 3. Phân tích phân khúc và cơ cấu thị trường\n"
+                "Sáu phân khúc theo giá bán: dưới 2 tỷ, 2–4, 4–7, 7–12, 12–25 và từ 25 tỷ. Tin bán đã làm sạch.", 12)],
+            [md("#### 3.1. Cơ cấu phân khúc giá theo loại hình")],
+            [("phan_khuc_tin", 6, 55), ("xh_phan_khuc", 6, 55)],
+            [md("#### 3.2. Cơ cấu phân khúc giá theo khu vực")],
+            [("phan_khuc_quan", 12, 75)],
+        ],
+    ),
+    "bien_dong": dict(
+        title="4. Phân tích biến động thị trường theo thời gian",
+        slug="bien-dong-thi-truong",
+        description="Nguồn cung mới, cơ cấu nguồn cung và giá/m² theo tuần đăng tin; quan hệ giữa cung và giá.",
+        filters=[("Loại hình", "loai_bds", "xh_tin_dang_tuan"),
+                 ("Quận", "quan", "xh_tin_dang_tuan"),
+                 ("Khu vực", "khu_vuc", "xh_tin_dang_tuan")],
+        rows=[
+            [md("### 4. Phân tích biến động thị trường theo thời gian\n"
+                "Trục thời gian là **tuần người bán đăng tin** (`posted_at`), không phải ngày crawl. "
+                "Chỉ lấy các tuần trọn 7 ngày, bắt đầu không sớm hơn 14 ngày trước lần crawl đầu tiên, "
+                "vì tin đăng sớm hơn phần lớn đã bị gỡ trước khi hệ thống kịp thấy. Giá chỉ tính tin bán đã làm sạch.", 14)],
+            [md("#### 4.1. Số lượng tin đăng mới theo tuần")],
+            [("xh_so_tin", 12, 50)],
+            [md("#### 4.2. Cơ cấu nguồn cung theo loại hình")],
+            [("xh_dong_gop", 6, 50), ("xh_co_cau_tuan", 6, 50)],
+            [md("#### 4.3. Biến động giá/m² theo tuần")],
+            [("xh_gia", 12, 55)],
+            [md("#### 4.4. Mối quan hệ giữa nguồn cung và giá")],
+            [("cung_gia", 12, 55)],
+        ],
+    ),
+    "chuyen_sau": dict(
+        title="5. Phân tích chuyên sâu theo loại hình",
+        slug="chuyen-sau-loai-hinh",
+        description="Đặc điểm riêng quyết định giá của nhà ở, căn hộ và đất.",
+        filters=[("Loại hình", "loai_bds", "ov_gia_ban_theo_quan", "Nhà ở"),
+                 ("Quận", "quan", "ov_gia_ban_theo_quan"),
+                 ("Khu vực", "khu_vuc", "ov_gia_ban_theo_quan")],
+        rows=[
+            [md("### 5. Phân tích chuyên sâu theo loại hình\n"
+                "Mở đầu là xếp hạng yếu tố theo eta² cho từng loại hình; sau đó đi vào đặc điểm riêng của nhà ở, căn hộ, đất. "
+                "Bộ lọc **Loại hình** mặc định là nhà ở, chỉ ảnh hưởng tới các chart dùng chung (eta², hướng nhà).", 12)],
+            [("yeu_to", 12, 60)],
+            [md("#### 5.1. Nhà ở")],
+            [("so_tang", 6, 50), ("chieu_ngang", 6, 50)],
+            [("dac_diem", 7, 55), ("huong", 5, 55)],
+            [md("#### 5.2. Căn hộ")],
+            [("phong_ngu", 6, 50), ("noi_that", 6, 50)],
+            [("du_an", 12, 50)],
+            [md("#### 5.3. Đất")],
+            [("loai_dat", 12, 55)],
         ],
     ),
     "mo_hinh": dict(
@@ -1202,3 +1229,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
