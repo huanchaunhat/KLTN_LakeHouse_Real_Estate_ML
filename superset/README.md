@@ -1,10 +1,18 @@
-# Superset: ba dashboard được sinh từ code
+# Superset: sáu dashboard được sinh từ code
 
-| Dashboard | Đường dẫn | Trả lời câu hỏi |
+Năm dashboard đầu theo đúng năm phần của chương "Phân tích và khám phá dữ liệu"; dashboard thứ sáu dành cho model.
+
+| Dashboard | Đường dẫn | Nội dung |
 |---|---|---|
-| Tổng quan thị trường BĐS TP.HCM | `/superset/dashboard/tong-quan-thi-truong/` | Thị trường có gì, ở đâu, giá bao nhiêu; giá và nguồn cung đổi thế nào theo tuần; phân bố giá, diện tích; dữ liệu sạch đến đâu |
-| Phân tích giá và thị trường BĐS TP.HCM | `/superset/dashboard/phan-tich-gia-thi-truong/` | A. Yếu tố nào quyết định giá (căn cứ chọn đặc trưng cho model). B. Đặc điểm riêng của nhà ở, căn hộ, đất. C. Vị trí ở mức phường. D. Phân khúc giá. E. Diễn biến theo tuần từ dữ liệu lịch sử: giá/m² nội và ngoại thành, tin đang rao, tin mới, tin tăng và giảm giá |
-| Model dự đoán giá bán: sai số trên tập test | `/superset/dashboard/mo-hinh-du-doan-gia/` | Phiên bản champion sai bao nhiêu, sai ở loại hình, quận, phân khúc nào, có lệch hệ thống hay trôi theo tuần không |
+| 1. Tổng quan thị trường | `/superset/dashboard/tong-quan-thi-truong/` | 1.1 cơ cấu loại hình, 1.2 số tin theo loại hình và mục đích, 1.3 phân bố theo quận, 1.4 bản đồ nguồn cung (deck.gl, mỗi chấm một phường) |
+| 2. Mặt bằng giá | `/superset/dashboard/mat-bang-gia/` | 2.1 phân bố giá bán, giá/m², diện tích; 2.2 so sánh loại hình; 2.3 giá bán theo quận và theo khoảng cách tới trung tâm; 2.4 giá thuê theo quận; 2.5 xếp hạng phường; 2.6 pháp lý; 2.7 diện tích và giá bán |
+| 3. Phân khúc và cơ cấu | `/superset/dashboard/phan-khuc-thi-truong/` | 3.1 phân khúc giá theo loại hình; 3.2 cơ cấu phân khúc của từng quận |
+| 4. Biến động theo thời gian | `/superset/dashboard/bien-dong-thi-truong/` | Theo tuần đăng tin: 4.1 tin mới, 4.2 cơ cấu nguồn cung theo loại hình, 4.3 giá/m², 4.4 nguồn cung và giá trên cùng một chart (cột + đường) |
+| 5. Chuyên sâu theo loại hình | `/superset/dashboard/chuyen-sau-loai-hinh/` | Xếp hạng yếu tố (eta²), rồi 5.1 nhà ở (số tầng, chiều ngang, đặc điểm, hướng), 5.2 căn hộ (phòng ngủ, nội thất, dự án), 5.3 đất (loại đất) |
+| Model dự đoán giá bán | `/superset/dashboard/mo-hinh-du-doan-gia/` | Phiên bản champion sai bao nhiêu, sai ở loại hình, quận, phân khúc nào, có lệch hệ thống hay trôi theo tuần không |
+
+Bản đồ (1.4) cần token Mapbox miễn phí để có nền bản đồ: đặt `MAPBOX_API_KEY` trong `.env`
+rồi `docker compose up -d superset`. Không có token thì các chấm vẫn hiện trên nền trống.
 
 Toàn bộ dashboard (dataset = câu Spark SQL trên tầng Gold, chart, bố cục, bộ lọc)
 được khai báo trong `build_dashboards.py`. Không có gì được vẽ tay trong giao diện,
@@ -20,9 +28,9 @@ bash superset/import_dashboards.sh   # sinh dashboards.zip -> import -> publish
 ## Cách đọc
 
 - Giá bán lấy từ `gold.ml_price_features`: tin bán đã làm sạch, bỏ giá bất thường, bỏ văn phòng/mặt bằng (tin "bán" của nhóm này thường ghi giá thuê). Đơn vị: giá bán tỷ đồng, giá/m² triệu đồng, giá thuê triệu đồng/tháng. Dùng trung vị thay vì trung bình.
-- Số tin lấy từ `gold.fct_listing` (`is_market_eligible`). Các chart theo tuần lấy từ hai bảng tổng hợp `gold.agg_price_trend_weekly` và `gold.agg_market_supply_weekly`, cấp toàn thành phố và nội/ngoại thành (dataset `tg_*_tp`, không có cột quận nên bộ lọc Quận bỏ qua). Không dùng time grain của Superset (Spark 3 không chạy được hàm gộp tuần của Hive); dữ liệu đã là một dòng mỗi tuần.
+- Số tin lấy từ `gold.fct_listing` (`is_market_eligible`). Các chart theo tuần (dashboard 4) tính theo tuần người bán đăng tin (`posted_at`), chỉ lấy các tuần trọn (biểu thức `POSTED_SINCE`). Không dùng time grain của Superset (Spark 3 không chạy được hàm gộp tuần của Hive); dữ liệu đã là một dòng mỗi tuần.
 - Ba bộ lọc **Loại hình**, **Quận**, **Khu vực** áp dụng cho mọi chart có cột tương ứng (`loai_bds`, `quan`, `khu_vuc`); chart nào không có cột đó thì bộ lọc bỏ qua. Nhóm dưới 30 tin bị loại khỏi các chart giá.
-- Dashboard phân tích chỉ nói về dữ liệu. Model có dashboard riêng, đọc `gold.ml_price_predictions` của phiên bản mới nhất, chỉ tập test (20% tin mới nhất theo ngày đăng), nên con số khớp với MLflow.
+- Năm dashboard đầu chỉ nói về dữ liệu. Model có dashboard riêng, đọc `gold.ml_price_predictions` của phiên bản mới nhất, chỉ tập test (20% tin mới nhất theo ngày đăng), nên con số khớp với MLflow.
 - Không có chart về số ngày rao hay mức giảm giá: tin Nhà Tốt hết hạn sau 30 ngày nên số ngày rao gần như bằng nhau ở mọi quận (27 đến 29 ngày), và tỷ lệ giảm giá chỉ dao động 4 đến 10%, chưa đủ khác biệt để kết luận với 6 tuần dữ liệu.
 
 ## Sửa dashboard
